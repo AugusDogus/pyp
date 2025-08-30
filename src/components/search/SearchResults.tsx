@@ -83,10 +83,21 @@ export function SearchResults({
     return result;
   }, [searchResult.vehicles, columns]);
 
+  // Calculate card height based on column count
+  const getCardHeight = () => {
+    if (isMobile) return 477.88; // 1 column
+    if (sidebarOpen) return 497.38; // 2 columns
+    return 477.88; // 3 columns
+  };
+
+  const cardHeight = getCardHeight();
+  const gapHeight = 24; // gap-6 = 24px
+  const rowHeight = cardHeight + gapHeight;
+
   // Single virtualizer for rows - much simpler and more reliable
   const rowVirtualizer = useWindowVirtualizer({
     count: rows.length,
-    estimateSize: () => 501.88, // Card height (477.88px) + gap-6 (24px) between rows
+    estimateSize: () => rowHeight,
     overscan: 3,
     scrollPaddingEnd: 100,
   });
