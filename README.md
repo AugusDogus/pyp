@@ -20,7 +20,7 @@ Search across all [Pick Your Part (PYP)](https://www.pyp.com) salvage yard inven
 - [Cheerio](https://cheerio.js.org) - Server-side HTML parsing
 - [nuqs](https://nuqs.47ng.com) - Type-safe URL search params
 
-*This project was initially scaffolded using [create-t3-app](https://create.t3.gg/).*
+_This project was initially scaffolded using [create-t3-app](https://create.t3.gg/)._
 
 ## Getting Started
 

@@ -12,7 +12,8 @@ import { TRPCReactProvider } from "~/trpc/react";
 
 export const metadata: Metadata = {
   title: "PYP Global Search",
-  description: "Search across all Pick Your Part salvage yard inventory locations",
+  description:
+    "Search across all Pick Your Part salvage yard inventory locations",
   icons: [{ rel: "icon", url: "/favicon.svg" }],
 };
 

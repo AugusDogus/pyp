@@ -116,8 +116,7 @@ function getMockLocations(): Location[] {
   return [
     {
       locationCode: "1223",
-      locationPageURL:
-        "https://www.pyp.com/inventory/huntsville-1223/",
+      locationPageURL: "https://www.pyp.com/inventory/huntsville-1223/",
       name: "Pick Your Part - Huntsville",
       displayName: "Huntsville",
       address: "6942 Stringfield Rd.",
@@ -132,8 +131,7 @@ function getMockLocations(): Location[] {
       legacyCode: "223",
       primo: "",
       urls: {
-        store:
-          "https://www.pyp.com/inventory/huntsville-1223/",
+        store: "https://www.pyp.com/inventory/huntsville-1223/",
         interchange: "/parts/huntsville-1223/",
         inventory: "/inventory/huntsville-1223/",
         prices: "/prices/huntsville-1223/",
