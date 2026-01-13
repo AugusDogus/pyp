@@ -15,7 +15,7 @@ import type {
 } from "~/lib/types";
 import { calculateDistance } from "~/lib/utils";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
-import { locationsRouter } from "./locations";
+import { fetchLocationsFromPYP } from "./locations";
 
 // Schema for search filters
 const searchFiltersSchema = z.object({
@@ -532,9 +532,7 @@ export const vehiclesRouter = createTRPCRouter({
       }
 
       // Search all locations
-      const locationsToSearch = await locationsRouter
-        .createCaller({ headers: new Headers() })
-        .getAll();
+      const locationsToSearch = await fetchLocationsFromPYP();
 
       // Perform parallel searches with concurrency limit using p-limit
       const limit = pLimit(SEARCH_CONFIG.MAX_CONCURRENT_REQUESTS);
@@ -608,11 +606,10 @@ export const vehiclesRouter = createTRPCRouter({
       }),
     )
     .query(async ({ input }): Promise<Vehicle | null> => {
-      const location = await locationsRouter
-        .createCaller({ headers: new Headers() })
-        .getByCode({
-          locationCode: input.locationCode,
-        });
+      const allLocations = await fetchLocationsFromPYP();
+      const location = allLocations.find(
+        (loc) => loc.locationCode === input.locationCode,
+      );
 
       if (!location) return null;
 

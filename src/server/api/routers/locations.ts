@@ -11,7 +11,7 @@ import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
  * In a real implementation, this would scrape the actual location page
  * For now, we'll use a mock implementation
  */
-async function fetchLocationsFromPYP(): Promise<Location[]> {
+export async function fetchLocationsFromPYP(): Promise<Location[]> {
   try {
     // In production, this would fetch from the actual PYP inventory page
     // and parse the _locationList JavaScript variable

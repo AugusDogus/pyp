@@ -36,6 +36,7 @@ export function SignInForm() {
         router.refresh();
       }
     } catch (err) {
+      console.error("Sign in error:", err);
       setError("An unexpected error occurred");
     } finally {
       setIsLoading(false);

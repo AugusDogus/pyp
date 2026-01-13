@@ -38,6 +38,7 @@ export function SignUpForm() {
         router.refresh();
       }
     } catch (err) {
+      console.error("Sign up error:", err);
       setError("An unexpected error occurred");
     } finally {
       setIsLoading(false);
