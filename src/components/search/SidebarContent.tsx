@@ -63,7 +63,7 @@ export function SidebarContent({
     <div className="space-y-6">
       <Collapsible defaultOpen>
         <CollapsibleTrigger className="hover:bg-accent flex w-full items-center justify-between rounded p-2">
-          <span className="font-medium">Data Source</span>
+          <span className="font-medium">Salvage Yards</span>
           <ChevronDown className="h-4 w-4" />
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-2 space-y-2">
@@ -219,7 +219,7 @@ export function SidebarContent({
 
       <Collapsible>
         <CollapsibleTrigger className="hover:bg-accent flex w-full items-center justify-between rounded p-2">
-          <span className="font-medium">Salvage Yard</span>
+          <span className="font-medium">Lot</span>
           <ChevronDown className="h-4 w-4" />
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-2 space-y-2">

@@ -1,11 +1,15 @@
 # Junkyard Index
 
-Search across all salvage yard inventory locations nationwide. Currently indexes [LKQ Pick Your Part](https://www.pyp.com) and [Row52 / Pick-n-Pull](https://row52.com) yards.
+Search across multiple salvage yard inventory locations nationwide. 
+
+Currently indexes salvage yards from:
+- [LKQ Pick Your Part](https://www.pyp.com)
+- [Row52 / Pick-n-Pull](https://row52.com)
 
 ## Features
 
 - **Multi-source Search**: Search across multiple salvage yard networks simultaneously
-- **Advanced Filtering**: Filter by make, color, year, state, data source, and specific yards
+- **Advanced Filtering**: Filter by make, color, year, state, and specific yards
 - **Real-time Results**: Fast, concurrent searches with live result updates
 - **Vehicle Details**: Complete vehicle information with images and direct links
 - **Shareable URLs**: All filters and search state preserved in the URL
