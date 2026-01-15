@@ -1,18 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { Bookmark, Trash2 } from "lucide-react";
-import { Button } from "~/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
-import { api } from "~/trpc/react";
+import { ArrowRight, Bookmark, Search, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
+import { Button } from "~/components/ui/button";
 import { buildSearchUrl } from "~/lib/search-utils";
-import { useIsMobile } from "~/hooks/use-media-query";
+import { api } from "~/trpc/react";
 
 export function SavedSearchesList() {
-  const router = useRouter();
   const utils = api.useUtils();
-  const isMobile = useIsMobile();
 
   const { data: savedSearches, isLoading } = api.savedSearches.list.useQuery();
 
@@ -26,27 +22,48 @@ export function SavedSearchesList() {
     },
   });
 
-  const handleLoadSearch = (search: NonNullable<typeof savedSearches>[0]) => {
-    router.push(buildSearchUrl(search.query, search.filters));
-  };
-
   const handleDelete = (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
     e.stopPropagation();
     deleteMutation.mutate({ id });
   };
 
+  // Build a summary of active filters for display
+  const getFilterSummary = (search: NonNullable<typeof savedSearches>[0]) => {
+    const parts: string[] = [];
+    if (search.filters.makes?.length) {
+      parts.push(search.filters.makes.slice(0, 2).join(", ") + (search.filters.makes.length > 2 ? "..." : ""));
+    }
+    if (search.filters.states?.length) {
+      parts.push(search.filters.states.slice(0, 2).join(", ") + (search.filters.states.length > 2 ? "..." : ""));
+    }
+    if (search.filters.minYear || search.filters.maxYear) {
+      const yearStr = search.filters.minYear && search.filters.maxYear
+        ? `${search.filters.minYear}-${search.filters.maxYear}`
+        : search.filters.minYear
+        ? `${search.filters.minYear}+`
+        : `up to ${search.filters.maxYear}`;
+      parts.push(yearStr);
+    }
+    return parts.join(" · ");
+  };
+
   if (isLoading) {
     return (
-      <div className="mt-8">
-        <h3 className="text-muted-foreground mb-4 text-sm font-medium">Your Saved Searches</h3>
-        <div className={`grid gap-3 ${isMobile ? "" : "sm:grid-cols-2 lg:grid-cols-3"}`}>
+      <div className="mt-8 sm:mt-10">
+        <div className="mb-4 flex items-center gap-2">
+          <Bookmark className="text-muted-foreground h-4 w-4" />
+          <h3 className="text-foreground text-sm font-semibold">Saved Searches</h3>
+        </div>
+        <div className="space-y-2">
           {[1, 2, 3].map((i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader className={isMobile ? "p-5" : "p-4"}>
-                <div className="bg-muted h-4 w-24 rounded" />
-                <div className="bg-muted mt-2 h-3 w-16 rounded" />
-              </CardHeader>
-            </Card>
+            <div
+              key={i}
+              className="bg-muted/50 animate-pulse rounded-lg p-4"
+            >
+              <div className="bg-muted h-4 w-32 rounded" />
+              <div className="bg-muted mt-2 h-3 w-48 rounded" />
+            </div>
           ))}
         </div>
       </div>
@@ -58,40 +75,47 @@ export function SavedSearchesList() {
   }
 
   return (
-    <div className="mt-8">
-      <h3 className="text-muted-foreground mb-4 text-sm font-medium">Your Saved Searches</h3>
-      <div className={`grid gap-3 ${isMobile ? "" : "sm:grid-cols-2 lg:grid-cols-3"}`}>
-        {savedSearches.map((search) => (
-          <Card
-            key={search.id}
-            className="group cursor-pointer transition-colors hover:bg-accent"
-            onClick={() => handleLoadSearch(search)}
-          >
-            <CardHeader className={isMobile ? "p-5" : "p-4"}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <Bookmark className="text-muted-foreground h-4 w-4 shrink-0" />
-                  <CardTitle className="text-sm font-medium truncate">{search.name}</CardTitle>
+    <div className="mt-8 sm:mt-10">
+      <div className="mb-4 flex items-center gap-2">
+        <Bookmark className="text-muted-foreground h-4 w-4" />
+        <h3 className="text-foreground text-sm font-semibold">Saved Searches</h3>
+      </div>
+      <div className="space-y-2">
+        {savedSearches.map((search) => {
+          const filterSummary = getFilterSummary(search);
+          return (
+            <Link
+              key={search.id}
+              href={buildSearchUrl(search.query, search.filters)}
+              className="group bg-muted/50 hover:bg-muted flex w-full items-center gap-3 rounded-lg p-4 text-left transition-colors"
+            >
+              <div className="bg-background flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
+                <Search className="text-muted-foreground h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-foreground truncate font-medium">
+                  {search.name}
                 </div>
+                <div className="text-muted-foreground truncate text-sm">
+                  {search.query || "All vehicles"}
+                  {filterSummary && ` · ${filterSummary}`}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className={`h-8 w-8 shrink-0 p-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground ${
-                    isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                  }`}
+                  className="h-8 w-8 p-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground sm:opacity-0 sm:group-hover:opacity-100"
                   onClick={(e) => handleDelete(e, search.id)}
                   disabled={deleteMutation.isPending}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
+                <ArrowRight className="text-muted-foreground hidden h-4 w-4 transition-transform group-hover:translate-x-0.5 sm:block" />
               </div>
-              <CardDescription className={`${isMobile ? "text-sm" : "text-xs"}`}>
-                {search.query || "No query"}
-                {search.filters.makes?.length ? ` · ${search.filters.makes.join(", ")}` : ""}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        ))}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
