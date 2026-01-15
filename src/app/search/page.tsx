@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { Suspense } from "react";
 import { ErrorBoundary } from "~/components/ErrorBoundary";
 import { Header } from "~/components/Header";
+import { ScrollToTop } from "~/components/ScrollToTop";
 import { SearchPageContent } from "~/components/search/SearchPageContent";
 import { auth } from "~/lib/auth";
 
@@ -18,6 +19,7 @@ export default async function SearchPage() {
           <SearchPageContent isLoggedIn={!!session?.user} />
         </Suspense>
       </ErrorBoundary>
+      <ScrollToTop />
     </div>
   );
 }
