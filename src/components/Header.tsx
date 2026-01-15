@@ -10,7 +10,7 @@ export async function Header() {
   });
 
   return (
-    <header className="bg-card border-b shadow-sm">
+    <header className="bg-card sticky top-0 z-50 border-b shadow-sm">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center">
           <div className="flex items-center space-x-4">
