@@ -14,7 +14,7 @@ export default async function SearchPage() {
 
   return (
     <SearchVisibilityProvider>
-      <div className="bg-background min-h-screen">
+      <div className="bg-background min-h-svh">
         <Header />
         <ErrorBoundary>
           <Suspense>
