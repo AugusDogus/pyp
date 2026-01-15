@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { signOut, useSession } from "~/lib/auth-client";
+import { useState } from "react";
+import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,8 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import { Button } from "~/components/ui/button";
-import { LogOut } from "lucide-react";
+import { signOut, useSession } from "~/lib/auth-client";
 
 interface UserMenuProps {
   user?: { name: string; email: string; image?: string | null } | null;
@@ -46,19 +46,20 @@ export function UserMenu({ user: initialUser }: UserMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="ghost"
-          className="relative h-9 w-9 rounded-full p-0"
+          variant="outline"
+          size="sm"
+          className="relative h-8 w-8 rounded-full p-0"
         >
           {user.image ? (
             <img
               src={user.image}
               alt={user.name || user.email}
-              className="h-9 w-9 rounded-full"
+              className="h-8 w-8 rounded-full"
             />
           ) : (
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium">
+            <span className="text-xs font-medium">
               {initials}
-            </div>
+            </span>
           )}
         </Button>
       </DropdownMenuTrigger>

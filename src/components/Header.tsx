@@ -19,8 +19,8 @@ export async function Header() {
             </Link>
           </div>
           <div className="ml-auto flex items-center gap-4">
-            <HeaderAuthButtons user={session?.user ?? null} />
             <ThemeToggle />
+            <HeaderAuthButtons user={session?.user ?? null} />
           </div>
         </div>
       </div>
