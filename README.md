@@ -32,3 +32,11 @@ _This project was initially scaffolded using [create-t3-app](https://create.t3.g
 ## License
 
 This project is open source and available under the [MIT License](LICENSE).
+
+# TODO
+- Make the header sticky
+- Make the "save searches" have optimistic updates
+- Combine the avatar and theme toggle into a single button
+- Add the saved searches to the home page
+- Add oauth login
+- Add password reset

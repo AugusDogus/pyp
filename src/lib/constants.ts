@@ -15,6 +15,12 @@ export const API_ENDPOINTS = {
   VEHICLE_INVENTORY:
     "/DesktopModules/pyp_vehicleInventory/getVehicleInventory.aspx",
   LOCATION_PAGE: "/inventory/",
+  ROW52_BASE: "https://api.row52.com",
+  ROW52_VEHICLES: "/odata/Vehicles",
+  ROW52_MAKES: "/odata/Makes",
+  ROW52_MODELS: "/odata/Models",
+  ROW52_LOCATIONS: "/odata/Locations",
+  ROW52_CDN: "https://cdn.row52.com",
 } as const;
 
 // Error messages

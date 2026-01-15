@@ -38,7 +38,8 @@ import {
 import { Skeleton } from "~/components/ui/skeleton";
 import { useIsMobile } from "~/hooks/use-media-query";
 import { ERROR_MESSAGES, SEARCH_CONFIG } from "~/lib/constants";
-import type { Vehicle } from "~/lib/types";
+import type { DataSource, Vehicle } from "~/lib/types";
+import { buildColorDisplayMap, buildDisplayNameMap, normalizeColor } from "~/lib/utils";
 import { api } from "~/trpc/react";
 
 interface SearchPageContentProps {
@@ -102,6 +103,16 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
     "yards",
     parseAsArrayOf(parseAsString).withDefault([]),
   );
+  const [sources, setSources] = useQueryState(
+    "sources",
+    parseAsArrayOf(parseAsString).withDefault([]),
+  );
+
+  // Type-safe sources conversion
+  const typedSources = useMemo(
+    () => sources.filter((s): s is DataSource => s === "pyp" || s === "row52"),
+    [sources],
+  );
 
   // Debounce the query for search API calls
   const [debouncedQuery] = useDebounce(query, SEARCH_CONFIG.DEBOUNCE_DELAY);
@@ -118,6 +129,7 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
       makes: undefined,
       colors: undefined,
       states: undefined,
+      sources: typedSources.length > 0 ? typedSources : undefined,
       yearRange: undefined,
     },
     {
@@ -182,6 +194,24 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
     [setQuery],
   );
 
+  // Build display name maps for normalized filtering
+  const displayNameMaps = useMemo(() => {
+    if (!searchResults?.vehicles || searchResults.vehicles.length === 0) {
+      return {
+        makes: new Map<string, string>(),
+        colors: new Map<string, string>(),
+      };
+    }
+
+    const allMakes = searchResults.vehicles.map((v: Vehicle) => v.make);
+    const allColors = searchResults.vehicles.map((v: Vehicle) => v.color);
+
+    return {
+      makes: buildDisplayNameMap(allMakes),
+      colors: buildColorDisplayMap(allColors),
+    };
+  }, [searchResults?.vehicles]);
+
   // Calculate filter options from search results
   const filterOptions = useMemo(() => {
     if (!searchResults?.vehicles || searchResults.vehicles.length === 0) {
@@ -193,18 +223,10 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
       };
     }
 
-    const makes = [
-      ...new Set(
-        searchResults.vehicles.map((vehicle: Vehicle) => vehicle.make),
-      ),
-    ].sort();
-    const colors = [
-      ...new Set(
-        searchResults.vehicles.map((vehicle: Vehicle) => vehicle.color),
-      ),
-    ].sort();
+    // Use display names (sorted by display name)
+    const makes = Array.from(displayNameMaps.makes.values()).sort();
+    const colors = Array.from(displayNameMaps.colors.values()).sort();
 
-    // Show all states and yards (no cross-filtering)
     const allStates = Array.from(
       new Set(
         searchResults.vehicles.map(
@@ -224,13 +246,14 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
       states: allStates,
       salvageYards: allSalvageYards,
     };
-  }, [searchResults?.vehicles]);
+  }, [searchResults?.vehicles, displayNameMaps]);
 
   const clearAllFilters = () => {
     void setMakes([]);
     void setColors([]);
     void setStates([]);
     void setSalvageYards([]);
+    void setSources([]);
 
     // Clear URL parameters when user explicitly clears all filters
     void setMinYearParam(null);
@@ -251,6 +274,7 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
       colors.length +
       states.length +
       salvageYards.length +
+      sources.length +
       (yearRange &&
       (yearRange[0] !== dataYearRange[0] || yearRange[1] !== dataYearRange[1])
         ? 1
@@ -261,51 +285,51 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
     colors,
     states,
     salvageYards,
+    sources,
     yearRange,
     currentYear,
     searchResults?.vehicles,
     dataMinYear,
   ]);
 
+  // Normalized filter sets for case-insensitive comparison
+  const normalizedFilters = useMemo(() => ({
+    makes: new Set(makes.map((m) => m.toLowerCase())),
+    colors: new Set(colors.map((c) => c.toLowerCase())),
+  }), [makes, colors]);
+
   // Comprehensive filtering logic - all client-side, no server filtering
   const filteredVehicles = useMemo(() => {
     if (!searchResults?.vehicles) return [];
 
     return searchResults.vehicles.filter((vehicle: Vehicle) => {
-      // Year range filter
       if (
         yearRange &&
         (vehicle.year < yearRange[0] || vehicle.year > yearRange[1])
       ) {
         return false;
       }
-
-      // Make filter
-      if (makes.length > 0 && !makes.includes(vehicle.make)) {
+      if (normalizedFilters.makes.size > 0 && !normalizedFilters.makes.has(vehicle.make.toLowerCase())) {
         return false;
       }
-
-      // Color filter
-      if (colors.length > 0 && !colors.includes(vehicle.color)) {
-        return false;
+      if (normalizedFilters.colors.size > 0) {
+        const vehicleColor = normalizeColor(vehicle.color);
+        if (!vehicleColor || !normalizedFilters.colors.has(vehicleColor)) {
+          return false;
+        }
       }
-
-      // State filter
       if (states.length > 0 && !states.includes(vehicle.location.state)) {
         return false;
       }
-
-      // Salvage yard filter
       if (
         salvageYards.length > 0 &&
         !salvageYards.includes(vehicle.location.name)
       ) {
         return false;
       }
-
       return true;
     });
-  }, [searchResults?.vehicles, makes, colors, states, salvageYards, yearRange]);
+  }, [searchResults?.vehicles, normalizedFilters, states, salvageYards, yearRange]);
 
   // Sorting function
   const sortVehicles = useCallback(
@@ -379,12 +403,14 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
               colors={colors}
               states={states}
               salvageYards={salvageYards}
+              sources={typedSources}
               yearRange={yearRange}
               filterOptions={filterOptions}
               onMakesChange={setMakes}
               onColorsChange={setColors}
               onStatesChange={setStates}
               onSalvageYardsChange={setSalvageYards}
+              onSourcesChange={(newSources) => void setSources(newSources)}
               onYearRangeChange={(range: [number, number]) => {
                 setMinYear(range[0]);
                 setMaxYear(range[1]);
@@ -484,12 +510,14 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
                       colors={colors}
                       states={states}
                       salvageYards={salvageYards}
+                      sources={typedSources}
                       yearRange={yearRange}
                       filterOptions={filterOptions}
                       onMakesChange={setMakes}
                       onColorsChange={setColors}
                       onStatesChange={setStates}
                       onSalvageYardsChange={setSalvageYards}
+                      onSourcesChange={(newSources) => void setSources(newSources)}
                       onYearRangeChange={(range: [number, number]) => {
                         setMinYear(range[0]);
                         setMaxYear(range[1]);

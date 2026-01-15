@@ -6,6 +6,7 @@ import pLimit from "p-limit";
 import { z } from "zod";
 import { API_ENDPOINTS, SEARCH_CONFIG } from "~/lib/constants";
 import type {
+  DataSource,
   Location,
   ParsedVehicleData,
   SearchFilters,
@@ -13,9 +14,10 @@ import type {
   Vehicle,
   VehicleImage,
 } from "~/lib/types";
-import { calculateDistance } from "~/lib/utils";
+import { calculateDistance, normalizeColor } from "~/lib/utils";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import { fetchLocationsFromPYP } from "./locations";
+import { fetchVehiclesFromRow52 } from "./row52";
 
 // Schema for search filters
 const searchFiltersSchema = z.object({
@@ -24,6 +26,7 @@ const searchFiltersSchema = z.object({
   models: z.array(z.string()).optional(),
   colors: z.array(z.string()).optional(),
   states: z.array(z.string()).optional(),
+  sources: z.array(z.enum(["pyp", "row52"])).optional(),
   yearRange: z.tuple([z.number(), z.number()]).optional(),
   dateRange: z.tuple([z.date(), z.date()]).optional(),
   maxDistance: z.number().optional(),
@@ -236,22 +239,6 @@ function extractWordAfterLabel(text: string, label: string): string {
   return afterLabel.split(" ")[0] ?? "";
 }
 
-/**
- * Determine image type from URL
- */
-function getImageType(url: string): VehicleImage["type"] {
-  if (url.includes("CAR-FRONT-LEFT")) return "CAR-FRONT-LEFT";
-  if (url.includes("CAR-BACK-LEFT")) return "CAR-BACK-LEFT";
-  if (url.includes("CAR-BACK-RIGHT")) return "CAR-BACK-RIGHT";
-  if (url.includes("CAR-FRONT-RIGHT")) return "CAR-FRONT-RIGHT";
-  if (url.includes("CAR-BACK")) return "CAR-BACK";
-  if (url.includes("CAR-FRONT")) return "CAR-FRONT";
-  if (url.includes("CAR-LEFT")) return "CAR-LEFT";
-  if (url.includes("CAR-RIGHT")) return "CAR-RIGHT";
-  if (url.includes("ENGINE")) return "ENGINE";
-  if (url.includes("INTERIOR")) return "INTERIOR";
-  return "OTHER";
-}
 
 /**
  * Remove crop parameters from image URL
@@ -332,22 +319,13 @@ function parseVehicleInventoryHTML(
         const images: VehicleImage[] = [];
 
         if (mainImageUrl) {
-          images.push({
-            url: removeCropParameters(mainImageUrl),
-            thumbnailUrl: mainImageUrl,
-            type: getImageType(mainImageUrl),
-          });
+          images.push({ url: removeCropParameters(mainImageUrl) });
         }
 
-        thumbnails.forEach((thumbnailUrl) => {
-          images.push({
-            url: removeCropParameters(thumbnailUrl),
-            thumbnailUrl,
-            type: getImageType(thumbnailUrl),
-          });
-        });
+        for (const thumbUrl of thumbnails) {
+          images.push({ url: removeCropParameters(thumbUrl) });
+        }
 
-        // Year, Make, Model
         const ymmText = $(el).find(".pypvi_ymm").text().trim();
         const normalizedYmm = ymmText.replace(/\s+/g, " ").trim();
         const [yearStr = "", make = "", ...modelParts] =
@@ -355,7 +333,6 @@ function parseVehicleInventoryHTML(
         const model = modelParts.join(" ");
         const year = parseInt(yearStr) || 0;
 
-        // Details
         const colorText = $(el)
           .find(".pypvi_detailItem:contains('Color:')")
           .text();
@@ -444,46 +421,42 @@ function parseVehicleInventoryHTML(
   return vehicles;
 }
 
-/**
- * Filter vehicles based on search criteria
- */
 function filterVehicles(
   vehicles: Vehicle[],
   filters: SearchFilters,
 ): Vehicle[] {
+  const normalizedMakes = filters.makes?.map((m) => m.toLowerCase());
+  const normalizedModels = filters.models?.map((m) => m.toLowerCase());
+  const normalizedColors = filters.colors?.map((c) => c.toLowerCase());
+
   return vehicles.filter((vehicle) => {
-    // Filter by makes
-    if (filters.makes?.length && !filters.makes.includes(vehicle.make)) {
+    if (filters.sources?.length && !filters.sources.includes(vehicle.source)) {
       return false;
     }
-
-    // Filter by models
-    if (filters.models?.length && !filters.models.includes(vehicle.model)) {
+    if (normalizedMakes?.length && !normalizedMakes.includes(vehicle.make.toLowerCase())) {
       return false;
     }
-
-    // Filter by colors
-    if (filters.colors?.length && !filters.colors.includes(vehicle.color)) {
+    if (normalizedModels?.length && !normalizedModels.includes(vehicle.model.toLowerCase())) {
       return false;
     }
-
-    // Filter by states
+    if (normalizedColors?.length) {
+      const vehicleColor = normalizeColor(vehicle.color);
+      if (!vehicleColor || !normalizedColors.includes(vehicleColor)) {
+        return false;
+      }
+    }
     if (
       filters.states?.length &&
       !filters.states.includes(vehicle.location.stateAbbr)
     ) {
       return false;
     }
-
-    // Filter by year range
     if (filters.yearRange) {
       const [minYear, maxYear] = filters.yearRange;
       if (vehicle.year < minYear || vehicle.year > maxYear) {
         return false;
       }
     }
-
-    // Filter by date range
     if (filters.dateRange) {
       const [startDate, endDate] = filters.dateRange;
       const vehicleDate = new Date(vehicle.availableDate);
@@ -491,8 +464,6 @@ function filterVehicles(
         return false;
       }
     }
-
-    // Filter by distance
     if (
       filters.maxDistance &&
       filters.userLocation &&
@@ -500,22 +471,28 @@ function filterVehicles(
     ) {
       return false;
     }
-
     return true;
   });
 }
 
+function deduplicateVehicles(vehicles: Vehicle[]): Vehicle[] {
+  const vinMap = new Map<string, Vehicle>();
+  for (const vehicle of vehicles) {
+    const existing = vinMap.get(vehicle.vin);
+    if (!existing || (vehicle.source === "pyp" && existing.source === "row52")) {
+      vinMap.set(vehicle.vin, vehicle);
+    }
+  }
+  return Array.from(vinMap.values());
+}
+
 export const vehiclesRouter = createTRPCRouter({
-  /**
-   * Global search across all PYP locations
-   */
   search: publicProcedure
     .input(searchFiltersSchema)
     .query(async ({ input, ctx }): Promise<SearchResult> => {
       const startTime = Date.now();
 
-      // Always get user's geolocation for distance calculations
-      let userLocation: [number, number] = [39.8283, -98.5795]; // Default to center of US
+      let userLocation: [number, number] = [39.8283, -98.5795];
       try {
         if (ctx.req) {
           const geo = geolocation(ctx.req);
@@ -526,60 +503,108 @@ export const vehiclesRouter = createTRPCRouter({
             ];
           }
         }
-      } catch (error) {
-        console.error("Failed to get geolocation:", error);
+      } catch {
         // Keep default location
       }
 
-      // Search all locations
-      const locationsToSearch = await fetchLocationsFromPYP();
+      const sourcesToSearch: DataSource[] = input.sources?.length
+        ? input.sources
+        : ["pyp", "row52"];
 
-      // Perform parallel searches with concurrency limit using p-limit
-      const limit = pLimit(SEARCH_CONFIG.MAX_CONCURRENT_REQUESTS);
       const locationsWithErrors: string[] = [];
+      const allVehicles: Vehicle[] = [];
+      let totalLocationsCovered = 0;
 
-      const allVehiclePromises = locationsToSearch.map((location) =>
-        limit(async () => {
-          try {
-            const parsedVehicles = await fetchVehicleInventory(
-              location,
-              input.query,
-            );
-            return parsedVehicles.map((vehicle) => {
-              // Always calculate distance from user's location
-              const distance = calculateDistance(
-                userLocation[0],
-                userLocation[1],
-                location.lat,
-                location.lng,
+      const sourcePromises: Promise<void>[] = [];
+
+      if (sourcesToSearch.includes("pyp")) {
+        sourcePromises.push(
+          (async () => {
+            try {
+              const locationsToSearch = await fetchLocationsFromPYP();
+              totalLocationsCovered += locationsToSearch.length;
+
+              const limit = pLimit(SEARCH_CONFIG.MAX_CONCURRENT_REQUESTS);
+
+              const pypVehiclePromises = locationsToSearch.map((location) =>
+                limit(async () => {
+                  try {
+                    const parsedVehicles = await fetchVehicleInventory(
+                      location,
+                      input.query,
+                    );
+                    return parsedVehicles.map((vehicle) => {
+                      const distance = calculateDistance(
+                        userLocation[0],
+                        userLocation[1],
+                        location.lat,
+                        location.lng,
+                      );
+
+                      return {
+                        ...vehicle,
+                        source: "pyp" as const,
+                        location: {
+                          ...location,
+                          source: "pyp" as const,
+                          distance,
+                        },
+                      } as Vehicle;
+                    });
+                  } catch (error) {
+                    console.error(
+                      `Error fetching vehicles from PYP ${location.locationCode}:`,
+                      error,
+                    );
+                    locationsWithErrors.push(`pyp-${location.locationCode}`);
+                    return [];
+                  }
+                }),
               );
 
-              return {
+              const pypResults = await Promise.all(pypVehiclePromises);
+              allVehicles.push(...pypResults.flat());
+            } catch (error) {
+              console.error("Error fetching from PYP:", error);
+              locationsWithErrors.push("pyp-all");
+            }
+          })(),
+        );
+      }
+
+      if (sourcesToSearch.includes("row52")) {
+        sourcePromises.push(
+          (async () => {
+            try {
+              const row52Vehicles = await fetchVehiclesFromRow52(input.query);
+
+              const vehiclesWithDistance = row52Vehicles.map((vehicle) => ({
                 ...vehicle,
                 location: {
-                  ...location,
-                  distance,
+                  ...vehicle.location,
+                  distance: calculateDistance(
+                    userLocation[0],
+                    userLocation[1],
+                    vehicle.location.lat,
+                    vehicle.location.lng,
+                  ),
                 },
-              } as Vehicle;
-            });
-          } catch (error) {
-            console.error(
-              `Error fetching vehicles from ${location.locationCode}:`,
-              error,
-            );
-            locationsWithErrors.push(location.locationCode);
-            return [];
-          }
-        }),
-      );
+              }));
 
-      const allVehicleResults = await Promise.all(allVehiclePromises);
-      const allVehicles = allVehicleResults.flat();
+              allVehicles.push(...vehiclesWithDistance);
+              totalLocationsCovered += 51;
+            } catch (error) {
+              console.error("Error fetching from Row52:", error);
+              locationsWithErrors.push("row52-all");
+            }
+          })(),
+        );
+      }
 
-      // Apply filters
-      const filteredVehicles = filterVehicles(allVehicles, input);
+      await Promise.all(sourcePromises);
 
-      // Return ALL results - no pagination (sorting is done client-side)
+      const deduplicatedVehicles = deduplicateVehicles(allVehicles);
+      const filteredVehicles = filterVehicles(deduplicatedVehicles, input);
       const allResults = filteredVehicles;
 
       const searchTime = Date.now() - startTime;
@@ -590,22 +615,24 @@ export const vehiclesRouter = createTRPCRouter({
         page: 1,
         hasMore: false,
         searchTime,
-        locationsCovered: locationsToSearch.length - locationsWithErrors.length,
+        locationsCovered: totalLocationsCovered - locationsWithErrors.length,
         locationsWithErrors,
       };
     }),
 
-  /**
-   * Get vehicle by ID
-   */
   getById: publicProcedure
     .input(
       z.object({
         vehicleId: z.string(),
         locationCode: z.string(),
+        source: z.enum(["pyp", "row52"]).optional(),
       }),
     )
     .query(async ({ input }): Promise<Vehicle | null> => {
+      if (input.vehicleId.startsWith("row52-") || input.source === "row52") {
+        return null;
+      }
+
       const allLocations = await fetchLocationsFromPYP();
       const location = allLocations.find(
         (loc) => loc.locationCode === input.locationCode,
@@ -613,7 +640,6 @@ export const vehiclesRouter = createTRPCRouter({
 
       if (!location) return null;
 
-      // Fetch specific vehicle (this is simplified - in reality would need to search)
       const vehicles = await fetchVehicleInventory(location, "");
       const vehicleData = vehicles.find((v) => v.id === input.vehicleId);
 
@@ -621,16 +647,15 @@ export const vehiclesRouter = createTRPCRouter({
 
       return {
         ...vehicleData,
-        location,
+        source: "pyp",
+        location: {
+          ...location,
+          source: "pyp",
+        },
       };
     }),
 
-  /**
-   * Get popular makes across all locations
-   */
   getPopularMakes: publicProcedure.query(async (): Promise<string[]> => {
-    // This would ideally analyze actual inventory data
-    // For now, return predefined popular makes
     return [
       "HONDA",
       "TOYOTA",

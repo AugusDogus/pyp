@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { API_ENDPOINTS } from "~/lib/constants";
-import type { Location } from "~/lib/types";
+import type { DataSource, Location } from "~/lib/types";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { fetchLocationsFromRow52 } from "./row52";
 
 /**
  * Fetches location data from PYP website with Next.js Data Cache
@@ -85,6 +86,7 @@ export async function fetchLocationsFromPYP(): Promise<Location[]> {
       distance: loc.Distance,
       legacyCode: loc.LegacyCode,
       primo: loc.Primo,
+      source: "pyp" as const,
       urls: {
         store: loc.Urls.Store,
         interchange: loc.Urls.Interchange,
@@ -130,6 +132,7 @@ function getMockLocations(): Location[] {
       distance: 0,
       legacyCode: "223",
       primo: "",
+      source: "pyp",
       urls: {
         store: "https://www.pyp.com/inventory/huntsville-1223/",
         interchange: "/parts/huntsville-1223/",
@@ -145,18 +148,54 @@ function getMockLocations(): Location[] {
         parts: "/parts/huntsville-1223/",
       },
     },
-    // Add more mock locations as needed
   ];
+}
+
+async function fetchAllLocations(
+  sources?: DataSource[],
+): Promise<Location[]> {
+  const sourcesToFetch = sources ?? ["pyp", "row52"];
+  const allLocations: Location[] = [];
+
+  const promises: Promise<void>[] = [];
+
+  if (sourcesToFetch.includes("pyp")) {
+    promises.push(
+      fetchLocationsFromPYP().then((locations) => {
+        allLocations.push(...locations);
+      }),
+    );
+  }
+
+  if (sourcesToFetch.includes("row52")) {
+    promises.push(
+      fetchLocationsFromRow52().then((locations) => {
+        allLocations.push(...locations);
+      }),
+    );
+  }
+
+  await Promise.all(promises);
+
+  return allLocations;
 }
 
 export const locationsRouter = createTRPCRouter({
   /**
-   * Get all PYP locations
+   * Get all locations from all sources
    * Uses Next.js Data Cache for automatic caching and request deduplication
    */
-  getAll: publicProcedure.query(async (): Promise<Location[]> => {
-    return await fetchLocationsFromPYP();
-  }),
+  getAll: publicProcedure
+    .input(
+      z
+        .object({
+          sources: z.array(z.enum(["pyp", "row52"])).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ input }): Promise<Location[]> => {
+      return await fetchAllLocations(input?.sources);
+    }),
 
   /**
    * Get locations by state
@@ -165,10 +204,11 @@ export const locationsRouter = createTRPCRouter({
     .input(
       z.object({
         states: z.array(z.string()),
+        sources: z.array(z.enum(["pyp", "row52"])).optional(),
       }),
     )
     .query(async ({ input }): Promise<Location[]> => {
-      const allLocations = await fetchLocationsFromPYP();
+      const allLocations = await fetchAllLocations(input.sources);
       return allLocations.filter((location) =>
         input.states.includes(location.stateAbbr),
       );
@@ -181,10 +221,13 @@ export const locationsRouter = createTRPCRouter({
     .input(
       z.object({
         locationCode: z.string(),
+        source: z.enum(["pyp", "row52"]).optional(),
       }),
     )
     .query(async ({ input }): Promise<Location | null> => {
-      const allLocations = await fetchLocationsFromPYP();
+      const allLocations = await fetchAllLocations(
+        input.source ? [input.source] : undefined,
+      );
       return (
         allLocations.find(
           (location) => location.locationCode === input.locationCode,
@@ -199,10 +242,11 @@ export const locationsRouter = createTRPCRouter({
     .input(
       z.object({
         query: z.string().min(1),
+        sources: z.array(z.enum(["pyp", "row52"])).optional(),
       }),
     )
     .query(async ({ input }): Promise<Location[]> => {
-      const allLocations = await fetchLocationsFromPYP();
+      const allLocations = await fetchAllLocations(input.sources);
       const query = input.query.toLowerCase();
 
       return allLocations.filter(
@@ -214,32 +258,42 @@ export const locationsRouter = createTRPCRouter({
     }),
 
   /**
-   * Get unique states that have PYP locations
+   * Get unique states that have locations
    */
-  getStates: publicProcedure.query(
-    async (): Promise<Array<{ code: string; name: string; count: number }>> => {
-      const allLocations = await fetchLocationsFromPYP();
-      const stateMap = new Map<string, { name: string; count: number }>();
+  getStates: publicProcedure
+    .input(
+      z
+        .object({
+          sources: z.array(z.enum(["pyp", "row52"])).optional(),
+        })
+        .optional(),
+    )
+    .query(
+      async ({
+        input,
+      }): Promise<Array<{ code: string; name: string; count: number }>> => {
+        const allLocations = await fetchAllLocations(input?.sources);
+        const stateMap = new Map<string, { name: string; count: number }>();
 
-      allLocations.forEach((location) => {
-        const existing = stateMap.get(location.stateAbbr);
-        if (existing) {
-          existing.count++;
-        } else {
-          stateMap.set(location.stateAbbr, {
-            name: location.state,
-            count: 1,
-          });
-        }
-      });
+        allLocations.forEach((location) => {
+          const existing = stateMap.get(location.stateAbbr);
+          if (existing) {
+            existing.count++;
+          } else {
+            stateMap.set(location.stateAbbr, {
+              name: location.state,
+              count: 1,
+            });
+          }
+        });
 
-      return Array.from(stateMap.entries())
-        .map(([code, data]) => ({
-          code,
-          name: data.name,
-          count: data.count,
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name));
-    },
-  ),
+        return Array.from(stateMap.entries())
+          .map(([code, data]) => ({
+            code,
+            name: data.name,
+            count: data.count,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      },
+    ),
 });

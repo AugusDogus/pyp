@@ -7,6 +7,7 @@ import {
 } from "~/components/ui/collapsible";
 import { Label } from "~/components/ui/label";
 import { Slider } from "~/components/ui/slider";
+import type { DataSource } from "~/lib/types";
 
 interface FilterOptions {
   makes: string[];
@@ -15,17 +16,24 @@ interface FilterOptions {
   salvageYards: string[];
 }
 
+const SOURCE_LABELS: Record<DataSource, string> = {
+  pyp: "Pick Your Part (PYP)",
+  row52: "Row52 / Pick-n-Pull",
+};
+
 interface SidebarContentProps {
   makes: string[];
   colors: string[];
   states: string[];
   salvageYards: string[];
+  sources: DataSource[];
   yearRange: [number, number];
   filterOptions: FilterOptions;
   onMakesChange: (makes: string[]) => void;
   onColorsChange: (colors: string[]) => void;
   onStatesChange: (states: string[]) => void;
   onSalvageYardsChange: (salvageYards: string[]) => void;
+  onSourcesChange: (sources: DataSource[]) => void;
   onYearRangeChange: (range: [number, number]) => void;
   yearRangeLimits?: {
     min: number;
@@ -38,18 +46,66 @@ export function SidebarContent({
   colors,
   states,
   salvageYards,
+  sources,
   yearRange,
   filterOptions,
   onMakesChange,
   onColorsChange,
   onStatesChange,
   onSalvageYardsChange,
+  onSourcesChange,
   onYearRangeChange,
   yearRangeLimits,
 }: SidebarContentProps) {
+  const availableSources: DataSource[] = ["pyp", "row52"];
+
   return (
     <div className="space-y-6">
-      {/* Make Filter - Only show if there are multiple makes available */}
+      <Collapsible defaultOpen>
+        <CollapsibleTrigger className="hover:bg-accent flex w-full items-center justify-between rounded p-2">
+          <span className="font-medium">Data Source</span>
+          <ChevronDown className="h-4 w-4" />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2 space-y-2">
+          {availableSources.map((source) => {
+            const isChecked = sources.length === 0 || sources.includes(source);
+
+            return (
+              <div key={source} className="flex items-center space-x-2 pr-3 pl-3">
+                <Checkbox
+                  id={`source-${source}`}
+                  checked={isChecked}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      if (sources.length === 0) return;
+                      const newSources = [...sources, source];
+                      onSourcesChange(
+                        newSources.length === availableSources.length
+                          ? []
+                          : newSources,
+                      );
+                    } else {
+                      if (sources.length === 0) {
+                        onSourcesChange(
+                          availableSources.filter((s) => s !== source),
+                        );
+                      } else {
+                        const newSources = sources.filter((s) => s !== source);
+                        if (newSources.length === 0) return;
+                        onSourcesChange(newSources);
+                      }
+                    }
+                  }}
+                />
+                <Label htmlFor={`source-${source}`} className="text-sm">
+                  {SOURCE_LABELS[source]}
+                </Label>
+              </div>
+            );
+          })}
+        </CollapsibleContent>
+      </Collapsible>
+
       {filterOptions.makes.length > 1 && (
         <Collapsible defaultOpen>
           <CollapsibleTrigger className="hover:bg-accent flex w-full items-center justify-between rounded p-2">
@@ -79,7 +135,6 @@ export function SidebarContent({
         </Collapsible>
       )}
 
-      {/* Year Range Filter */}
       <Collapsible defaultOpen>
         <CollapsibleTrigger className="hover:bg-accent flex w-full items-center justify-between rounded p-2">
           <span className="font-medium">Year Range</span>
@@ -94,7 +149,6 @@ export function SidebarContent({
             <Slider
               value={yearRange}
               onValueChange={(value) => {
-                // Update URL state directly
                 const [min, max] = value as [number, number];
                 onYearRangeChange([min, max]);
               }}
@@ -102,20 +156,13 @@ export function SidebarContent({
               max={yearRangeLimits?.max ?? new Date().getFullYear()}
               step={1}
               className="w-full"
-              onPointerDown={(e) => {
-                // Prevent the drawer from dismissing when interacting with the slider
-                e.stopPropagation();
-              }}
-              onTouchStart={(e) => {
-                // Prevent the drawer from dismissing when interacting with the slider
-                e.stopPropagation();
-              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
             />
           </div>
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Color Filter */}
       <Collapsible>
         <CollapsibleTrigger className="hover:bg-accent flex w-full items-center justify-between rounded p-2">
           <span className="font-medium">Color</span>
@@ -143,7 +190,6 @@ export function SidebarContent({
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Location Filter */}
       <Collapsible>
         <CollapsibleTrigger className="hover:bg-accent flex w-full items-center justify-between rounded p-2">
           <span className="font-medium">State</span>
@@ -171,7 +217,6 @@ export function SidebarContent({
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Salvage Yard Filter */}
       <Collapsible>
         <CollapsibleTrigger className="hover:bg-accent flex w-full items-center justify-between rounded p-2">
           <span className="font-medium">Salvage Yard</span>

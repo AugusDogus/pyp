@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import type { DataSource } from "~/lib/types";
 import { SidebarContent } from "./SidebarContent";
 
 interface FilterOptions {
@@ -20,12 +21,14 @@ interface SidebarProps {
   colors: string[];
   states: string[];
   salvageYards: string[];
+  sources: DataSource[];
   yearRange: [number, number];
   filterOptions: FilterOptions;
   onMakesChange: (makes: string[]) => void;
   onColorsChange: (colors: string[]) => void;
   onStatesChange: (states: string[]) => void;
   onSalvageYardsChange: (salvageYards: string[]) => void;
+  onSourcesChange: (sources: DataSource[]) => void;
   onYearRangeChange: (range: [number, number]) => void;
   yearRangeLimits?: {
     min: number;
@@ -42,12 +45,14 @@ export function Sidebar({
   colors,
   states,
   salvageYards,
+  sources,
   yearRange,
   filterOptions,
   onMakesChange,
   onColorsChange,
   onStatesChange,
   onSalvageYardsChange,
+  onSourcesChange,
   onYearRangeChange,
   yearRangeLimits,
 }: SidebarProps) {
@@ -101,12 +106,14 @@ export function Sidebar({
                 colors={colors}
                 states={states}
                 salvageYards={salvageYards}
+                sources={sources}
                 yearRange={yearRange}
                 filterOptions={filterOptions}
                 onMakesChange={onMakesChange}
                 onColorsChange={onColorsChange}
                 onStatesChange={onStatesChange}
                 onSalvageYardsChange={onSalvageYardsChange}
+                onSourcesChange={onSourcesChange}
                 onYearRangeChange={onYearRangeChange}
                 yearRangeLimits={yearRangeLimits}
               />
