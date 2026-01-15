@@ -37,6 +37,7 @@ interface SaveSearchDialogProps {
   isLoggedIn?: boolean;
   autoOpen?: boolean;
   onAutoOpenHandled?: () => void;
+  compact?: boolean;
 }
 
 export function storePendingSaveSearch(query: string, filters: SaveSearchFilters) {
@@ -64,6 +65,7 @@ export function SaveSearchDialog({
   isLoggedIn,
   autoOpen,
   onAutoOpenHandled,
+  compact,
 }: SaveSearchDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(() => {
@@ -112,6 +114,8 @@ export function SaveSearchDialog({
       <DialogTrigger asChild>
         <Button
           variant="outline"
+          size={compact ? "sm" : "default"}
+          className={compact ? "h-8 text-xs" : ""}
           disabled={disabled || !query}
           onClick={(e) => {
             if (!isLoggedIn) {
@@ -120,7 +124,7 @@ export function SaveSearchDialog({
             }
           }}
         >
-          <Bookmark className="h-4 w-4" />
+          <Bookmark className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
           Save Search
         </Button>
       </DialogTrigger>

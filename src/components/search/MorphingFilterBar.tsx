@@ -6,10 +6,10 @@ import {
   Filter,
   MapPin,
 } from "lucide-react";
-import { motion, useScroll, useTransform } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Skeleton } from "~/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -17,7 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
-import { useSearchVisibility } from "~/context/SearchVisibilityContext";
 import { SavedSearchesDropdown } from "./SavedSearchesDropdown";
 import { SaveSearchDialog } from "./SaveSearchDialog";
 
@@ -41,171 +40,173 @@ interface MorphingFilterBarProps {
   autoOpenSaveDialog?: boolean;
   onAutoOpenHandled?: () => void;
   disabled?: boolean;
+  loading?: boolean;
 }
 
-interface Measurements {
-  startTop: number;
-  startLeft: number;
-  endTop: number;
-  endLeft: number;
-}
+export const MorphingFilterBar = forwardRef<HTMLDivElement, MorphingFilterBarProps>(
+  function MorphingFilterBar(
+    {
+      query,
+      sortBy,
+      onSortChange,
+      activeFilterCount,
+      onToggleFilters,
+      isLoggedIn,
+      filters,
+      autoOpenSaveDialog,
+      onAutoOpenHandled,
+      disabled,
+      loading,
+    },
+    ref,
+  ) {
+    const placeholderRef = useRef<HTMLDivElement>(null);
+    const [style, setStyle] = useState<{
+      top: number;
+      right: number;
+      progress: number;
+    } | null>(null);
 
-export function MorphingFilterBar({
-  query,
-  sortBy,
-  onSortChange,
-  activeFilterCount,
-  onToggleFilters,
-  isLoggedIn,
-  filters,
-  autoOpenSaveDialog,
-  onAutoOpenHandled,
-  disabled,
-}: MorphingFilterBarProps) {
-  const { headerFilterTargetRef } = useSearchVisibility();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [measurements, setMeasurements] = useState<Measurements | null>(null);
+    useEffect(() => {
+      const updatePosition = () => {
+        const placeholder = placeholderRef.current;
+        if (!placeholder) return;
 
-  const getSortIcon = useCallback((sortOption: string) => {
-    switch (sortOption) {
-      case "newest":
-      case "oldest":
-        return Calendar;
-      case "year-desc":
-      case "year-asc":
-        return ArrowUpDown;
-      case "distance":
-        return MapPin;
-      default:
-        return ArrowUpDown;
-    }
-  }, []);
+        const rect = placeholder.getBoundingClientRect();
+        const scrollY = window.scrollY;
+        
+        const headerButtonsContainer = document.querySelector('header > div > div > div:last-child');
+        const buttonsRect = headerButtonsContainer?.getBoundingClientRect();
+        
+        const headerTop = buttonsRect ? buttonsRect.top : 16;
+        const headerRight = buttonsRect ? (window.innerWidth - buttonsRect.left + 16) : 120;
+        
+        const startTop = rect.top + scrollY;
+        const startRight = window.innerWidth - rect.right;
+        
+        const transitionStart = startTop - 80;
+        const transitionEnd = startTop - headerTop;
+        
+        let progress = 0;
+        if (scrollY <= transitionStart) {
+          progress = 0;
+        } else if (scrollY >= transitionEnd) {
+          progress = 1;
+        } else {
+          progress = (scrollY - transitionStart) / (transitionEnd - transitionStart);
+        }
+        
+        const lerp = (start: number, end: number, t: number) => start + (end - start) * t;
+        
+        setStyle({
+          top: lerp(startTop - scrollY, headerTop, progress),
+          right: lerp(startRight, headerRight, progress),
+          progress,
+        });
+      };
 
-  // Measure start (page) and end (header) positions
-  useEffect(() => {
-    const measure = () => {
-      const container = containerRef.current;
-      const headerTarget = headerFilterTargetRef.current;
-      if (!container || !headerTarget) return;
+      updatePosition();
+      window.addEventListener("scroll", updatePosition, { passive: true });
+      window.addEventListener("resize", updatePosition, { passive: true });
+      
+      return () => {
+        window.removeEventListener("scroll", updatePosition);
+        window.removeEventListener("resize", updatePosition);
+      };
+    }, []);
 
-      const startRect = container.getBoundingClientRect();
-      const endRect = headerTarget.getBoundingClientRect();
+    const getSortIcon = useCallback((sortOption: string) => {
+      switch (sortOption) {
+        case "newest":
+        case "oldest":
+          return Calendar;
+        case "year-desc":
+        case "year-asc":
+          return ArrowUpDown;
+        case "distance":
+          return MapPin;
+        default:
+          return ArrowUpDown;
+      }
+    }, []);
 
-      setMeasurements({
-        startTop: startRect.top + window.scrollY,
-        startLeft: startRect.left,
-        endTop: endRect.top + window.scrollY,
-        endLeft: endRect.left,
-      });
-    };
+    const SortIcon = getSortIcon(sortBy);
+    const isCompact = style ? style.progress > 0.5 : false;
 
-    measure();
-    window.addEventListener("resize", measure);
-    const handleScroll = () => {
-      if (window.scrollY === 0) measure();
-    };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    const timeout = setTimeout(measure, 100);
-
-    return () => {
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", handleScroll);
-      clearTimeout(timeout);
-    };
-  }, [headerFilterTargetRef]);
-
-  // Track page scroll
-  const { scrollY } = useScroll();
-
-  // Calculate the scroll point where transition should complete
-  const transitionEnd = (measurements?.startTop ?? 200) - 16;
-
-  // Top: follows page, docks at 16px (centered in 64px header)
-  const top = useTransform(scrollY, (scroll) => {
-    const naturalTop = (measurements?.startTop ?? 200) - scroll;
-    return Math.max(16, naturalTop);
-  });
-
-  // Progress for other properties
-  const progress = useTransform(scrollY, (scroll) => {
-    if (transitionEnd <= 0) return 0;
-    return Math.min(1, Math.max(0, scroll / transitionEnd));
-  });
-
-  // Interpolate horizontal position and scale
-  const left = useTransform(progress, [0, 1], [
-    measurements?.startLeft ?? 600,
-    measurements?.endLeft ?? 500,
-  ]);
-  const scale = useTransform(progress, [0, 1], [1, 0.9]);
-
-  const SortIcon = getSortIcon(sortBy);
-
-  const filterContent = (
-    <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-      {isLoggedIn && <SavedSearchesDropdown />}
-      <SaveSearchDialog
-        query={query}
-        filters={filters}
-        disabled={disabled}
-        isLoggedIn={isLoggedIn}
-        autoOpen={autoOpenSaveDialog}
-        onAutoOpenHandled={onAutoOpenHandled}
-      />
-
-      <Select value={sortBy} onValueChange={onSortChange}>
-        <SelectTrigger className="w-fit">
-          <div className="flex items-center gap-2">
-            <SortIcon className="text-muted-foreground h-4 w-4" />
-            <SelectValue />
-          </div>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="newest">Newest First</SelectItem>
-          <SelectItem value="oldest">Oldest First</SelectItem>
-          <SelectItem value="year-desc">Year (High to Low)</SelectItem>
-          <SelectItem value="year-asc">Year (Low to High)</SelectItem>
-          <SelectItem value="distance">Distance (Nearest)</SelectItem>
-        </SelectContent>
-      </Select>
-
-      <Button
-        variant="outline"
-        className="flex items-center gap-2 bg-transparent"
-        onClick={onToggleFilters}
-      >
-        <Filter className="h-4 w-4" />
-        Filters
-        {activeFilterCount > 0 && (
-          <Badge variant="secondary" className="text-xs">
-            {activeFilterCount}
-          </Badge>
-        )}
-      </Button>
-    </div>
-  );
-
-  return (
-    <>
-      {/* Placeholder that we track - invisible but maintains measurement point */}
-      <div ref={containerRef} className="invisible hidden md:block">
-        {filterContent}
+    const skeletonContent = (
+      <div className={`flex items-center ${isCompact ? "gap-1.5" : "gap-2 sm:gap-4"}`}>
+        {isLoggedIn && <Skeleton className={isCompact ? "h-8 w-[70px]" : "h-9 w-[88px]"} />}
+        <Skeleton className={isCompact ? "h-8 w-[90px]" : "h-9 w-[110px]"} />
+        <Skeleton className={isCompact ? "h-8 w-[100px]" : "h-9 w-[130px]"} />
+        <Skeleton className={isCompact ? "h-8 w-[70px]" : "h-9 w-[90px]"} />
       </div>
+    );
 
-      {/* The morphing filter bar - uses scroll-linked position on desktop */}
-      {measurements && (
-        <motion.div
-          className="fixed z-[60] hidden md:block"
-          style={{ top, left, scale, transformOrigin: "top left" }}
+    const filterContent = (
+      <div className={`flex items-center whitespace-nowrap transition-all duration-100 ${isCompact ? "gap-1.5" : "gap-2 sm:gap-4"}`}>
+        {isLoggedIn && <SavedSearchesDropdown compact={isCompact} />}
+        <SaveSearchDialog
+          query={query}
+          filters={filters}
+          disabled={disabled}
+          isLoggedIn={isLoggedIn}
+          autoOpen={autoOpenSaveDialog}
+          onAutoOpenHandled={onAutoOpenHandled}
+          compact={isCompact}
+        />
+
+        <Select value={sortBy} onValueChange={onSortChange}>
+          <SelectTrigger size={isCompact ? "sm" : "default"} className={`w-fit transition-all duration-100 ${isCompact ? "text-xs" : ""}`}>
+            <div className="flex items-center gap-2">
+              <SortIcon className={`text-muted-foreground ${isCompact ? "h-3.5 w-3.5" : "h-4 w-4"}`} />
+              <SelectValue />
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="newest">Newest First</SelectItem>
+            <SelectItem value="oldest">Oldest First</SelectItem>
+            <SelectItem value="year-desc">Year (High to Low)</SelectItem>
+            <SelectItem value="year-asc">Year (Low to High)</SelectItem>
+            <SelectItem value="distance">Distance (Nearest)</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Button
+          variant="outline"
+          size={isCompact ? "sm" : "default"}
+          className={`flex items-center gap-2 bg-transparent transition-all duration-100 ${isCompact ? "h-8 text-xs" : ""}`}
+          onClick={onToggleFilters}
         >
-          {filterContent}
-        </motion.div>
-      )}
-
-      {/* Mobile version - static */}
-      <div className="md:hidden">
-        {filterContent}
+          <Filter className={isCompact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+          Filters
+          {activeFilterCount > 0 && (
+            <Badge variant="secondary" className={isCompact ? "text-[10px]" : "text-xs"}>
+              {activeFilterCount}
+            </Badge>
+          )}
+        </Button>
       </div>
-    </>
-  );
-}
+    );
+
+    const content = loading ? skeletonContent : filterContent;
+
+    return (
+      <div ref={ref}>
+        <div ref={placeholderRef} className="h-9">
+          <div className="invisible">{content}</div>
+        </div>
+        {style && (
+          <div
+            className="fixed z-[60]"
+            style={{
+              top: style.top,
+              right: style.right,
+            }}
+          >
+            {content}
+          </div>
+        )}
+      </div>
+    );
+  },
+);

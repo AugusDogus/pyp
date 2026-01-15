@@ -1,6 +1,8 @@
 "use client";
 
+import { BookmarkCheck, FolderOpen, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
@@ -10,12 +12,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import { BookmarkCheck, Trash2, FolderOpen } from "lucide-react";
-import { api } from "~/trpc/react";
-import { toast } from "sonner";
 import { buildSearchUrl } from "~/lib/search-utils";
+import { api } from "~/trpc/react";
 
-export function SavedSearchesDropdown() {
+interface SavedSearchesDropdownProps {
+  compact?: boolean;
+}
+
+export function SavedSearchesDropdown({ compact }: SavedSearchesDropdownProps = {}) {
   const router = useRouter();
   const utils = api.useUtils();
 
@@ -42,8 +46,8 @@ export function SavedSearchesDropdown() {
 
   if (isLoading) {
     return (
-      <Button variant="outline" disabled>
-        <FolderOpen className="h-4 w-4" />
+      <Button variant="outline" size={compact ? "sm" : "default"} className={compact ? "h-8 text-xs" : ""} disabled>
+        <FolderOpen className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
         Saved
       </Button>
     );
@@ -56,8 +60,8 @@ export function SavedSearchesDropdown() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline">
-          <BookmarkCheck className="h-4 w-4" />
+        <Button variant="outline" size={compact ? "sm" : "default"} className={compact ? "h-8 text-xs" : ""}>
+          <BookmarkCheck className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
           Saved ({savedSearches.length})
         </Button>
       </DropdownMenuTrigger>

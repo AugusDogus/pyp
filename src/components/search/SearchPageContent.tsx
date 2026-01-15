@@ -39,6 +39,11 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
   const isMobile = useIsMobile();
   const { searchStateRef } = useSearchVisibility();
 
+  // Prefetch saved searches early to avoid waterfall
+  api.savedSearches.list.useQuery(undefined, {
+    enabled: isLoggedIn,
+  });
+
   // Sidebar state (local only - not in URL)
   const [showFilters, setShowFilters] = useState(false);
 
@@ -188,6 +193,18 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
     onChange: handleQueryChange,
     onSearch: handleSearch,
   };
+
+  // Memoized sort handler for filter state
+  const handleSortChange = useCallback(
+    (value: string) => void setSortBy(value),
+    [setSortBy],
+  );
+
+  // Memoized filter toggle handler
+  const handleToggleFilters = useCallback(
+    () => setShowFilters((prev) => !prev),
+    [],
+  );
 
   // Build display name maps for normalized filtering
   const displayNameMaps = useMemo(() => {
@@ -374,7 +391,7 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Search Input - morphs into header on scroll */}
+      {/* Search Input - sticky with scroll-linked scaling */}
       <MorphingSearchBar />
 
       <div className="relative flex w-full gap-6">
@@ -413,30 +430,36 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
         {/* Main Content */}
         <div className="w-full flex-1">
           {/* Search Results Header */}
-          {searchLoading && !filteredSearchResult ? (
-            <SearchResultsHeaderSkeleton />
-          ) : filteredSearchResult ? (
+          {(searchLoading || filteredSearchResult) && (
             <div className="mb-6">
               <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-foreground text-2xl font-black">
-                    Search Results
-                  </h2>
-                  <p className="text-muted-foreground">
-                    {filteredSearchResult.totalCount.toLocaleString()}{" "}
-                    vehicles found
-                    {filteredSearchResult.totalCount !==
-                      searchResults?.totalCount && (
-                      <span className="text-muted-foreground text-sm">
-                        {" "}
-                        (filtered from{" "}
-                        {searchResults?.totalCount.toLocaleString()})
-                      </span>
-                    )}
-                  </p>
-                </div>
+                {/* Title and count - show skeleton when loading */}
+                {searchLoading && !filteredSearchResult ? (
+                  <div>
+                    <Skeleton className="mb-2 h-8 w-48" />
+                    <Skeleton className="h-4 w-32" />
+                  </div>
+                ) : filteredSearchResult ? (
+                  <div>
+                    <h2 className="text-foreground text-2xl font-black">
+                      Search Results
+                    </h2>
+                    <p className="text-muted-foreground">
+                      {filteredSearchResult.totalCount.toLocaleString()}{" "}
+                      vehicles found
+                      {filteredSearchResult.totalCount !==
+                        searchResults?.totalCount && (
+                        <span className="text-muted-foreground text-sm">
+                          {" "}
+                          (filtered from{" "}
+                          {searchResults?.totalCount.toLocaleString()})
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                ) : null}
 
-                {/* Filter buttons - morph into header on desktop */}
+                {/* Filter buttons - always rendered so morphing position is consistent */}
                 {isMobile ? (
                   <MobileFiltersDrawer
                     activeFilterCount={activeFilterCount}
@@ -466,10 +489,10 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
                   <MorphingFilterBar
                     query={query}
                     sortBy={sortBy}
-                    onSortChange={(value) => void setSortBy(value)}
+                    onSortChange={handleSortChange}
                     activeFilterCount={activeFilterCount}
                     showFilters={showFilters}
-                    onToggleFilters={() => setShowFilters(!showFilters)}
+                    onToggleFilters={handleToggleFilters}
                     isLoggedIn={isLoggedIn}
                     filters={{
                       makes,
@@ -483,19 +506,26 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
                     autoOpenSaveDialog={autoOpenSaveDialog}
                     onAutoOpenHandled={handleAutoOpenHandled}
                     disabled={!query}
+                    loading={searchLoading && !filteredSearchResult}
                   />
                 )}
               </div>
 
-              {/* Search Stats */}
-              <div className="text-muted-foreground mb-6 flex items-center justify-between text-sm">
-                <span>
-                  Searched {searchResults?.locationsCovered} locations in{" "}
-                  {searchResults?.searchTime}ms
-                </span>
-              </div>
+              {/* Search Stats - show skeleton when loading */}
+              {searchLoading && !filteredSearchResult ? (
+                <div className="mb-6 flex items-center justify-between text-sm">
+                  <Skeleton className="h-4 w-48" />
+                </div>
+              ) : filteredSearchResult ? (
+                <div className="text-muted-foreground mb-6 flex items-center justify-between text-sm">
+                  <span>
+                    Searched {searchResults?.locationsCovered} locations in{" "}
+                    {searchResults?.searchTime}ms
+                  </span>
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          )}
 
           {/* Error Message */}
           {searchError && (
@@ -579,26 +609,3 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
   );
 }
 
-function SearchResultsHeaderSkeleton() {
-  return (
-    <div className="mb-6">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <Skeleton className="mb-2 h-8 w-48" />
-          <Skeleton className="h-4 w-32" />
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-          {/* Save Search button */}
-          <Skeleton className="h-10 w-28" />
-          {/* Sort dropdown */}
-          <Skeleton className="h-10 w-36" />
-          {/* Filters button */}
-          <Skeleton className="h-10 w-24" />
-        </div>
-      </div>
-      <div className="mb-6 flex items-center justify-between text-sm">
-        <Skeleton className="h-4 w-48" />
-      </div>
-    </div>
-  );
-}
