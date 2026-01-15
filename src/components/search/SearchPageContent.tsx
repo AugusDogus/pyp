@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  AlertCircle,
-  ArrowUpDown,
-  Calendar,
-  Filter,
-  MapPin,
-  Search,
-} from "lucide-react";
+import { AlertCircle, Search } from "lucide-react";
 import {
   parseAsArrayOf,
   parseAsInteger,
@@ -17,29 +10,19 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { MobileFiltersDrawer } from "~/components/search/MobileFiltersDrawer";
-import {
-  clearPendingSaveSearch,
-  SaveSearchDialog,
-} from "~/components/search/SaveSearchDialog";
-import { SavedSearchesDropdown } from "~/components/search/SavedSearchesDropdown";
+import { MorphingFilterBar } from "~/components/search/MorphingFilterBar";
+import { MorphingSearchBar } from "~/components/search/MorphingSearchBar";
+import { clearPendingSaveSearch } from "~/components/search/SaveSearchDialog";
 import { SavedSearchesList } from "~/components/search/SavedSearchesList";
-import { SearchInput } from "~/components/search/SearchInput";
 import {
   SearchResults,
   SearchSummary,
 } from "~/components/search/SearchResults";
 import { Sidebar } from "~/components/search/Sidebar";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
-import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select";
 import { Skeleton } from "~/components/ui/skeleton";
+import { useSearchVisibility } from "~/context/SearchVisibilityContext";
 import { useIsMobile } from "~/hooks/use-media-query";
 import { ERROR_MESSAGES, SEARCH_CONFIG } from "~/lib/constants";
 import type { DataSource, Vehicle } from "~/lib/types";
@@ -54,6 +37,7 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
   const [query, setQuery] = useQueryState("q", { defaultValue: "" });
   const currentYear = new Date().getFullYear();
   const isMobile = useIsMobile();
+  const { searchStateRef } = useSearchVisibility();
 
   // Sidebar state (local only - not in URL)
   const [showFilters, setShowFilters] = useState(false);
@@ -79,22 +63,6 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
     "sort",
     parseAsString.withDefault("newest"),
   );
-
-  // Get the appropriate icon for the current sort option
-  const getSortIcon = useCallback((sortOption: string) => {
-    switch (sortOption) {
-      case "newest":
-      case "oldest":
-        return Calendar;
-      case "year-desc":
-      case "year-asc":
-        return ArrowUpDown;
-      case "distance":
-        return MapPin;
-      default:
-        return ArrowUpDown;
-    }
-  }, []);
 
   // URL state for year range using built-in integer parser
   const [minYearParam, setMinYearParam] = useQueryState(
@@ -213,6 +181,13 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
     },
     [setQuery],
   );
+
+  // Update search state ref for docked search bar
+  searchStateRef.current = {
+    query,
+    onChange: handleQueryChange,
+    onSearch: handleSearch,
+  };
 
   // Build display name maps for normalized filtering
   const displayNameMaps = useMemo(() => {
@@ -399,21 +374,13 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Search Input */}
-      <div className="mb-6">
-        <SearchInput
-          value={query}
-          onChange={handleQueryChange}
-          onSearch={handleSearch}
-          placeholder="Enter year, make, model (e.g., '2018 Honda Civic' or 'Toyota')"
-          isLoading={searchLoading}
-        />
-      </div>
+      {/* Search Input - morphs into header on scroll */}
+      <MorphingSearchBar />
 
       <div className="relative flex w-full gap-6">
         {/* Desktop Sidebar - only render when filters are shown and not on mobile */}
         {!isMobile && showFilters && (
-          <div className="sticky top-6 h-fit">
+          <div className="sticky top-24 h-fit max-h-[calc(100vh-112px)] overflow-y-auto">
             <Sidebar
               showFilters={showFilters}
               setShowFilters={setShowFilters}
@@ -469,10 +436,41 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-                  {isLoggedIn && <SavedSearchesDropdown />}
-                  <SaveSearchDialog
+                {/* Filter buttons - morph into header on desktop */}
+                {isMobile ? (
+                  <MobileFiltersDrawer
+                    activeFilterCount={activeFilterCount}
+                    clearAllFilters={clearAllFilters}
+                    makes={makes}
+                    colors={colors}
+                    states={states}
+                    salvageYards={salvageYards}
+                    sources={typedSources}
+                    yearRange={yearRange}
+                    filterOptions={filterOptions}
+                    onMakesChange={setMakes}
+                    onColorsChange={setColors}
+                    onStatesChange={setStates}
+                    onSalvageYardsChange={setSalvageYards}
+                    onSourcesChange={(newSources) => void setSources(newSources)}
+                    onYearRangeChange={(range: [number, number]) => {
+                      setMinYear(range[0]);
+                      setMaxYear(range[1]);
+                    }}
+                    yearRangeLimits={{
+                      min: dataMinYear,
+                      max: currentYear,
+                    }}
+                  />
+                ) : (
+                  <MorphingFilterBar
                     query={query}
+                    sortBy={sortBy}
+                    onSortChange={(value) => void setSortBy(value)}
+                    activeFilterCount={activeFilterCount}
+                    showFilters={showFilters}
+                    onToggleFilters={() => setShowFilters(!showFilters)}
+                    isLoggedIn={isLoggedIn}
                     filters={{
                       makes,
                       colors,
@@ -482,85 +480,11 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
                       maxYear: yearRange[1],
                       sortBy,
                     }}
-                    disabled={!query}
-                    isLoggedIn={isLoggedIn}
-                    autoOpen={autoOpenSaveDialog}
+                    autoOpenSaveDialog={autoOpenSaveDialog}
                     onAutoOpenHandled={handleAutoOpenHandled}
+                    disabled={!query}
                   />
-
-                  {/* Sort */}
-                  <Select
-                    value={sortBy}
-                    onValueChange={(value) => setSortBy(value)}
-                  >
-                    <SelectTrigger className="w-fit">
-                      <div className="flex items-center gap-2">
-                        {(() => {
-                          const IconComponent = getSortIcon(sortBy);
-                          return (
-                            <IconComponent className="text-muted-foreground h-4 w-4" />
-                          );
-                        })()}
-                        <SelectValue />
-                      </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="newest">Newest First</SelectItem>
-                      <SelectItem value="oldest">Oldest First</SelectItem>
-                      <SelectItem value="year-desc">
-                        Year (High to Low)
-                      </SelectItem>
-                      <SelectItem value="year-asc">
-                        Year (Low to High)
-                      </SelectItem>
-                      <SelectItem value="distance">
-                        Distance (Nearest)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {/* Filter Toggle Button - Mobile/Desktop */}
-                  {isMobile ? (
-                    <MobileFiltersDrawer
-                      activeFilterCount={activeFilterCount}
-                      clearAllFilters={clearAllFilters}
-                      makes={makes}
-                      colors={colors}
-                      states={states}
-                      salvageYards={salvageYards}
-                      sources={typedSources}
-                      yearRange={yearRange}
-                      filterOptions={filterOptions}
-                      onMakesChange={setMakes}
-                      onColorsChange={setColors}
-                      onStatesChange={setStates}
-                      onSalvageYardsChange={setSalvageYards}
-                      onSourcesChange={(newSources) => void setSources(newSources)}
-                      onYearRangeChange={(range: [number, number]) => {
-                        setMinYear(range[0]);
-                        setMaxYear(range[1]);
-                      }}
-                      yearRangeLimits={{
-                        min: dataMinYear,
-                        max: currentYear,
-                      }}
-                    />
-                  ) : (
-                    <Button
-                      variant="outline"
-                      className="flex items-center gap-2 bg-transparent"
-                      onClick={() => setShowFilters(!showFilters)}
-                    >
-                      <Filter className="h-4 w-4" />
-                      Filters
-                      {activeFilterCount > 0 && (
-                        <Badge variant="secondary" className="ml-1 text-xs">
-                          {activeFilterCount}
-                        </Badge>
-                      )}
-                    </Button>
-                  )}
-                </div>
+                )}
               </div>
 
               {/* Search Stats */}

@@ -113,13 +113,6 @@ export interface ParsedVehicleData {
 }
 
 // Component props interfaces
-export interface SearchInputProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSearch: () => void;
-  placeholder?: string;
-  isLoading?: boolean;
-}
 
 export interface VehicleCardProps {
   vehicle: Vehicle;

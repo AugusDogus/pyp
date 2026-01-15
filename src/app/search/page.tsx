@@ -4,6 +4,7 @@ import { ErrorBoundary } from "~/components/ErrorBoundary";
 import { Header } from "~/components/Header";
 import { ScrollToTop } from "~/components/ScrollToTop";
 import { SearchPageContent } from "~/components/search/SearchPageContent";
+import { SearchVisibilityProvider } from "~/context/SearchVisibilityContext";
 import { auth } from "~/lib/auth";
 
 export default async function SearchPage() {
@@ -12,14 +13,16 @@ export default async function SearchPage() {
   });
 
   return (
-    <div className="bg-background min-h-screen">
-      <Header />
-      <ErrorBoundary>
-        <Suspense>
-          <SearchPageContent isLoggedIn={!!session?.user} />
-        </Suspense>
-      </ErrorBoundary>
-      <ScrollToTop />
-    </div>
+    <SearchVisibilityProvider>
+      <div className="bg-background min-h-screen">
+        <Header />
+        <ErrorBoundary>
+          <Suspense>
+            <SearchPageContent isLoggedIn={!!session?.user} />
+          </Suspense>
+        </ErrorBoundary>
+        <ScrollToTop />
+      </div>
+    </SearchVisibilityProvider>
   );
 }
