@@ -13,8 +13,9 @@ import { useDebounce } from "use-debounce";
 import { MobileFiltersDrawer } from "~/components/search/MobileFiltersDrawer";
 import { MorphingFilterBar } from "~/components/search/MorphingFilterBar";
 import { MorphingSearchBar } from "~/components/search/MorphingSearchBar";
-import { clearPendingSaveSearch } from "~/components/search/SaveSearchDialog";
+import { clearPendingSaveSearch, SaveSearchDialog } from "~/components/search/SaveSearchDialog";
 import { SavedSearchesList } from "~/components/search/SavedSearchesList";
+import { SavedSearchesDropdown } from "~/components/search/SavedSearchesDropdown";
 import {
   SearchResults,
   SearchSummary,
@@ -462,30 +463,49 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
 
                 {/* Filter buttons - always rendered so morphing position is consistent */}
                 {isMobile ? (
-                  <MobileFiltersDrawer
-                    activeFilterCount={activeFilterCount}
-                    clearAllFilters={clearAllFilters}
-                    makes={makes}
-                    colors={colors}
-                    states={states}
-                    salvageYards={salvageYards}
-                    sources={typedSources}
-                    yearRange={yearRange}
-                    filterOptions={filterOptions}
-                    onMakesChange={setMakes}
-                    onColorsChange={setColors}
-                    onStatesChange={setStates}
-                    onSalvageYardsChange={setSalvageYards}
-                    onSourcesChange={(newSources) => void setSources(newSources)}
-                    onYearRangeChange={(range: [number, number]) => {
-                      setMinYear(range[0]);
-                      setMaxYear(range[1]);
-                    }}
-                    yearRangeLimits={{
-                      min: dataMinYear,
-                      max: currentYear,
-                    }}
-                  />
+                  <div className="flex items-center gap-2">
+                    {isLoggedIn && <SavedSearchesDropdown />}
+                    <SaveSearchDialog
+                      query={query}
+                      filters={{
+                        makes,
+                        colors,
+                        states,
+                        salvageYards,
+                        minYear: yearRange[0],
+                        maxYear: yearRange[1],
+                        sortBy,
+                      }}
+                      disabled={!query}
+                      isLoggedIn={isLoggedIn}
+                      autoOpen={autoOpenSaveDialog}
+                      onAutoOpenHandled={handleAutoOpenHandled}
+                    />
+                    <MobileFiltersDrawer
+                      activeFilterCount={activeFilterCount}
+                      clearAllFilters={clearAllFilters}
+                      makes={makes}
+                      colors={colors}
+                      states={states}
+                      salvageYards={salvageYards}
+                      sources={typedSources}
+                      yearRange={yearRange}
+                      filterOptions={filterOptions}
+                      onMakesChange={setMakes}
+                      onColorsChange={setColors}
+                      onStatesChange={setStates}
+                      onSalvageYardsChange={setSalvageYards}
+                      onSourcesChange={(newSources) => void setSources(newSources)}
+                      onYearRangeChange={(range: [number, number]) => {
+                        setMinYear(range[0]);
+                        setMaxYear(range[1]);
+                      }}
+                      yearRangeLimits={{
+                        min: dataMinYear,
+                        max: currentYear,
+                      }}
+                    />
+                  </div>
                 ) : (
                   <MorphingFilterBar
                     query={query}
