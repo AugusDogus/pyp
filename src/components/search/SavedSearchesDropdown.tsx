@@ -26,12 +26,33 @@ export function SavedSearchesDropdown({ compact }: SavedSearchesDropdownProps = 
   const { data: savedSearches, isLoading } = api.savedSearches.list.useQuery();
 
   const deleteMutation = api.savedSearches.delete.useMutation({
+    onMutate: async ({ id }) => {
+      // Cancel outgoing refetches
+      await utils.savedSearches.list.cancel();
+
+      // Snapshot current data
+      const previousSearches = utils.savedSearches.list.getData();
+
+      // Optimistically remove the item
+      utils.savedSearches.list.setData(undefined, (old) =>
+        old?.filter((search) => search.id !== id)
+      );
+
+      return { previousSearches };
+    },
+    onError: (error, _variables, context) => {
+      // Rollback on error
+      if (context?.previousSearches) {
+        utils.savedSearches.list.setData(undefined, context.previousSearches);
+      }
+      toast.error(error.message || "Failed to delete search");
+    },
     onSuccess: () => {
       toast.success("Search deleted");
-      void utils.savedSearches.list.invalidate();
     },
-    onError: (error) => {
-      toast.error(error.message || "Failed to delete search");
+    onSettled: () => {
+      // Refetch to ensure consistency
+      void utils.savedSearches.list.invalidate();
     },
   });
 

@@ -79,14 +79,49 @@ export function SaveSearchDialog({
 
   const utils = api.useUtils();
   const createMutation = api.savedSearches.create.useMutation({
-    onSuccess: () => {
-      toast.success("Search saved!");
+    onMutate: async (newSearch) => {
+      // Cancel outgoing refetches
+      await utils.savedSearches.list.cancel();
+
+      // Snapshot current data
+      const previousSearches = utils.savedSearches.list.getData();
+
+      // Optimistically add the new item
+      const optimisticSearch = {
+        id: `temp-${Date.now()}`,
+        userId: "",
+        name: newSearch.name,
+        query: newSearch.query,
+        filters: newSearch.filters,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      utils.savedSearches.list.setData(undefined, (old) =>
+        old ? [...old, optimisticSearch] : [optimisticSearch]
+      );
+
+      // Close dialog and reset immediately for snappy UX
       setOpen(false);
       setName("");
-      void utils.savedSearches.list.invalidate();
+
+      return { previousSearches };
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      // Rollback on error
+      if (context?.previousSearches) {
+        utils.savedSearches.list.setData(undefined, context.previousSearches);
+      }
       toast.error(error.message || "Failed to save search");
+      // Reopen dialog on error so user can retry
+      setOpen(true);
+    },
+    onSuccess: () => {
+      toast.success("Search saved!");
+    },
+    onSettled: () => {
+      // Refetch to ensure consistency (will replace temp id with real one)
+      void utils.savedSearches.list.invalidate();
     },
   });
 
