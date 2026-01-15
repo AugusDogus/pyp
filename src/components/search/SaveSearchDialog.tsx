@@ -112,7 +112,6 @@ export function SaveSearchDialog({
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
           disabled={disabled || !query}
           onClick={(e) => {
             if (!isLoggedIn) {
@@ -121,7 +120,7 @@ export function SaveSearchDialog({
             }
           }}
         >
-          <Bookmark className="mr-2 h-4 w-4" />
+          <Bookmark className="h-4 w-4" />
           Save Search
         </Button>
       </DialogTrigger>

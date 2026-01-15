@@ -70,8 +70,8 @@ export function SavedSearchesDropdown() {
 
   if (isLoading) {
     return (
-      <Button variant="outline" size="sm" disabled>
-        <FolderOpen className="mr-2 h-4 w-4" />
+      <Button variant="outline" disabled>
+        <FolderOpen className="h-4 w-4" />
         Saved
       </Button>
     );
@@ -84,8 +84,8 @@ export function SavedSearchesDropdown() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
-          <BookmarkCheck className="mr-2 h-4 w-4" />
+        <Button variant="outline">
+          <BookmarkCheck className="h-4 w-4" />
           Saved ({savedSearches.length})
         </Button>
       </DropdownMenuTrigger>
