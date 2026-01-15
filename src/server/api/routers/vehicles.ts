@@ -233,10 +233,14 @@ function extractAfterLabel(text: string, label: string): string {
 
 /**
  * Helper function to extract first word after a label
+ * Filters out values that are just other labels (e.g., "Row:", "Space:")
  */
 function extractWordAfterLabel(text: string, label: string): string {
   const afterLabel = extractAfterLabel(text, label);
-  return afterLabel.split(" ")[0] ?? "";
+  const firstWord = afterLabel.split(" ")[0] ?? "";
+  // Filter out values that look like labels (end with colon)
+  if (firstWord.endsWith(":")) return "";
+  return firstWord;
 }
 
 
