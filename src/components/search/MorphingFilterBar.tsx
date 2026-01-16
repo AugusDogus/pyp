@@ -197,7 +197,7 @@ export const MorphingFilterBar = forwardRef<HTMLDivElement, MorphingFilterBarPro
         </div>
         {style && (
           <div
-            className="fixed z-[60]"
+            className="fixed z-40"
             style={{
               top: style.top,
               right: style.right,

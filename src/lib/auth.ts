@@ -1,16 +1,62 @@
+import { checkout, polar, portal, usage, webhooks } from "@polar-sh/better-auth";
+import { Polar } from "@polar-sh/sdk";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { eq } from "drizzle-orm";
+import { env } from "~/env";
 import { db } from "~/lib/db";
-import * as schema from "../../schema";
+import * as schema from "~/schema";
+
+export const polarClient = new Polar({
+  accessToken: env.POLAR_ACCESS_TOKEN,
+});
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
     schema,
   }),
+  baseURL: env.NEXT_PUBLIC_APP_URL,
+  trustedOrigins: [env.NEXT_PUBLIC_APP_URL],
   emailAndPassword: {
     enabled: true,
   },
-  secret: process.env.BETTER_AUTH_SECRET!,
-  ...(process.env.BETTER_AUTH_URL && { baseURL: process.env.BETTER_AUTH_URL }),
+  secret: env.BETTER_AUTH_SECRET,
+  plugins: [
+    polar({
+      client: polarClient,
+      createCustomerOnSignUp: true,
+      use: [
+        checkout({
+          products: [
+            {
+              productId: env.POLAR_PRODUCT_ID,
+              slug: "Email-Notifications",
+            },
+          ],
+          successUrl: `${env.NEXT_PUBLIC_APP_URL}/search?subscription=success`,
+          authenticatedUsersOnly: true,
+        }),
+        portal(),
+        usage(),
+        webhooks({
+          secret: env.POLAR_WEBHOOK_SECRET,
+          onCustomerStateChanged: async (payload) => {
+            // Triggered when anything regarding a customer changes (subscription status, etc.)
+            // Check if customer has any active subscriptions
+            const customerState = payload.data;
+            const hasActiveSubscription = customerState.activeSubscriptions.length > 0;
+
+            // If no active subscriptions, disable email alerts for this customer
+            if (!hasActiveSubscription && customerState.externalId) {
+              await db
+                .update(schema.savedSearch)
+                .set({ emailAlertsEnabled: false })
+                .where(eq(schema.savedSearch.userId, customerState.externalId));
+            }
+          },
+        }),
+      ],
+    }),
+  ],
 });

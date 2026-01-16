@@ -116,7 +116,12 @@ export const savedSearch = sqliteTable(
       .references(() => user.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     query: text("query").notNull(),
-    filters: text("filters").notNull(), // JSON string of filters
+    filters: text("filters").notNull(),
+    emailAlertsEnabled: integer("email_alerts_enabled", { mode: "boolean" })
+      .default(false)
+      .notNull(),
+    lastCheckedAt: integer("last_checked_at", { mode: "timestamp_ms" }),
+    lastVehicleIds: text("last_vehicle_ids"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
@@ -125,7 +130,10 @@ export const savedSearch = sqliteTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [index("saved_search_userId_idx").on(table.userId)],
+  (table) => [
+    index("saved_search_userId_idx").on(table.userId),
+    index("saved_search_emailAlertsEnabled_idx").on(table.emailAlertsEnabled),
+  ]
 );
 
 export const savedSearchRelations = relations(savedSearch, ({ one }) => ({

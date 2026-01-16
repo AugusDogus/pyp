@@ -9,6 +9,7 @@ import {
   useQueryState,
 } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useDebounce } from "use-debounce";
 import { MobileFiltersDrawer } from "~/components/search/MobileFiltersDrawer";
 import { MorphingFilterBar } from "~/components/search/MorphingFilterBar";
@@ -60,6 +61,24 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
       clearPendingSaveSearch();
     }
   }, [saveSearchParam, isLoggedIn, setSaveSearchParam]);
+
+  // Handle subscription success
+  // Polar adds customer_session_token to the URL after successful checkout
+  const [subscriptionParam, setSubscriptionParam] = useQueryState("subscription");
+  const [customerSessionToken, setCustomerSessionToken] = useQueryState("customer_session_token");
+  
+  useEffect(() => {
+    // Check for either subscription=success OR customer_session_token (Polar's redirect)
+    const isCheckoutSuccess = subscriptionParam === "success" || customerSessionToken;
+    
+    if (isCheckoutSuccess) {
+      toast.success("Subscription activated! Email alerts are now enabled for your saved searches.");
+      
+      // Clear the URL params
+      if (subscriptionParam) void setSubscriptionParam(null);
+      if (customerSessionToken) void setCustomerSessionToken(null);
+    }
+  }, [subscriptionParam, setSubscriptionParam, customerSessionToken, setCustomerSessionToken]);
 
   const handleAutoOpenHandled = useCallback(() => {
     setAutoOpenSaveDialog(false);

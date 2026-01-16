@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "~/components/ui/button";
+import { Checkbox } from "~/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ import {
 } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
+import { authClient } from "~/lib/auth-client";
 import { api } from "~/trpc/react";
 
 const PENDING_SAVE_KEY = "pendingSaveSearch";
@@ -76,51 +78,86 @@ export function SaveSearchDialog({
     return false;
   });
   const [name, setName] = useState("");
+  const [notifyMe, setNotifyMe] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const utils = api.useUtils();
+  const { data: subscriptionData } = api.subscription.getCustomerState.useQuery(
+    undefined,
+    { enabled: isLoggedIn }
+  );
+  const hasActiveSubscription = subscriptionData?.hasActiveSubscription ?? false;
+
+  // Determine if this save will require checkout
+  const needsCheckout = notifyMe && !hasActiveSubscription;
+
   const createMutation = api.savedSearches.create.useMutation({
     onMutate: async (newSearch) => {
-      // Cancel outgoing refetches
-      await utils.savedSearches.list.cancel();
+      // Only do optimistic updates if we're NOT redirecting to checkout
+      // (If we're redirecting, keep dialog open to show progress)
+      if (!needsCheckout) {
+        await utils.savedSearches.list.cancel();
+        const previousSearches = utils.savedSearches.list.getData();
 
-      // Snapshot current data
-      const previousSearches = utils.savedSearches.list.getData();
+        const optimisticSearch = {
+          id: `temp-${Date.now()}`,
+          userId: "",
+          name: newSearch.name,
+          query: newSearch.query,
+          filters: newSearch.filters,
+          emailAlertsEnabled: newSearch.emailAlertsEnabled ?? false,
+          lastCheckedAt: null,
+          lastVehicleIds: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
 
-      // Optimistically add the new item
-      const optimisticSearch = {
-        id: `temp-${Date.now()}`,
-        userId: "",
-        name: newSearch.name,
-        query: newSearch.query,
-        filters: newSearch.filters,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+        utils.savedSearches.list.setData(undefined, (old) =>
+          old ? [...old, optimisticSearch] : [optimisticSearch]
+        );
 
-      utils.savedSearches.list.setData(undefined, (old) =>
-        old ? [...old, optimisticSearch] : [optimisticSearch]
-      );
+        setOpen(false);
+        setName("");
+        setNotifyMe(false);
 
-      // Close dialog and reset immediately for snappy UX
-      setOpen(false);
-      setName("");
-
-      return { previousSearches };
+        return { previousSearches };
+      }
+      return {};
     },
     onError: (error, _variables, context) => {
-      // Rollback on error
       if (context?.previousSearches) {
         utils.savedSearches.list.setData(undefined, context.previousSearches);
       }
       toast.error(error.message || "Failed to save search");
-      // Reopen dialog on error so user can retry
-      setOpen(true);
+      setIsRedirecting(false);
+      // Reopen dialog on error so user can retry (only if it was closed)
+      if (!needsCheckout) {
+        setOpen(true);
+      }
     },
-    onSuccess: () => {
-      toast.success("Search saved!");
+    onSuccess: async (_data, variables) => {
+      // If user wanted notifications but doesn't have subscription, redirect to checkout
+      if (variables.emailAlertsEnabled && !hasActiveSubscription) {
+        setIsRedirecting(true);
+        try {
+          await authClient.checkout({ 
+            slug: "Email-Notifications",
+          });
+        } catch (error) {
+          console.error("Failed to redirect to checkout:", error);
+          toast.error("Failed to open checkout. Please try again from your saved searches.");
+          setIsRedirecting(false);
+          // Close dialog since search was saved
+          setOpen(false);
+          setName("");
+          setNotifyMe(false);
+          toast.success("Search saved! Enable notifications from your saved searches.");
+        }
+      } else {
+        toast.success("Search saved!");
+      }
     },
     onSettled: () => {
-      // Refetch to ensure consistency (will replace temp id with real one)
       void utils.savedSearches.list.invalidate();
     },
   });
@@ -131,8 +168,11 @@ export function SaveSearchDialog({
       name: name.trim(),
       query,
       filters,
+      emailAlertsEnabled: notifyMe,
     });
   };
+
+  const isSaving = createMutation.isPending || isRedirecting;
 
   const handleButtonClick = () => {
     if (isLoggedIn) {
@@ -145,7 +185,7 @@ export function SaveSearchDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(newOpen) => !isSaving && setOpen(newOpen)}>
       <DialogTrigger asChild>
         <Button
           variant="outline"
@@ -203,13 +243,40 @@ export function SaveSearchDialog({
               </p>
             )}
           </div>
+          <div className="flex items-start space-x-3 pt-2">
+            <Checkbox
+              id="notify"
+              checked={notifyMe}
+              onCheckedChange={(checked) => setNotifyMe(checked === true)}
+            />
+            <div className="grid gap-1.5 leading-none">
+              <Label
+                htmlFor="notify"
+                className="cursor-pointer text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Notify me of new results
+                {!hasActiveSubscription && (
+                  <span className="text-muted-foreground ml-1 font-normal">
+                    ($3/mo)
+                  </span>
+                )}
+              </Label>
+              <p className="text-muted-foreground text-xs">
+                Get daily email alerts when new vehicles match this search.
+              </p>
+            </div>
+          </div>
         </div>
         <DialogFooter>
           <Button
             onClick={handleSave}
-            disabled={!name.trim() || createMutation.isPending}
+            disabled={!name.trim() || isSaving}
           >
-            {createMutation.isPending ? "Saving..." : "Save"}
+            {isRedirecting
+              ? "Redirecting to checkout..."
+              : createMutation.isPending
+                ? "Saving..."
+                : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>

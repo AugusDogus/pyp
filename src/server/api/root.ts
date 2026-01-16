@@ -1,5 +1,6 @@
 import { locationsRouter } from "~/server/api/routers/locations";
 import { savedSearchesRouter } from "~/server/api/routers/savedSearches";
+import { subscriptionRouter } from "~/server/api/routers/subscription";
 import { vehiclesRouter } from "~/server/api/routers/vehicles";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
@@ -12,6 +13,7 @@ export const appRouter = createTRPCRouter({
   locations: locationsRouter,
   vehicles: vehiclesRouter,
   savedSearches: savedSearchesRouter,
+  subscription: subscriptionRouter,
 });
 
 // export type definition of API

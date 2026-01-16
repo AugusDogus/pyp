@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Moon, Sun, Monitor } from "lucide-react";
+import { CreditCard, LogOut, Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -16,7 +16,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import { signOut, useSession } from "~/lib/auth-client";
+import { signOut, useSession, authClient } from "~/lib/auth-client";
+import { api } from "~/trpc/react";
 
 interface UserMenuProps {
   user?: { name: string; email: string; image?: string | null } | null;
@@ -30,6 +31,29 @@ export function UserMenu({ user: initialUser }: UserMenuProps) {
 
   // Use session user if available (for real-time updates), otherwise fall back to initial user
   const user = session?.user ?? initialUser;
+
+  // Check subscription status using tRPC
+  const { data: subscriptionData } = api.subscription.getCustomerState.useQuery();
+
+  const hasActiveSubscription = subscriptionData?.hasActiveSubscription ?? false;
+
+  const handleManageSubscription = async () => {
+    try {
+      await authClient.customer?.portal();
+    } catch (error) {
+      console.error("Failed to open customer portal:", error);
+    }
+  };
+
+  const handleSubscribe = async () => {
+    try {
+      await authClient.checkout({
+        slug: "Email-Notifications",
+      });
+    } catch (error) {
+      console.error("Failed to open checkout:", error);
+    }
+  };
 
   if (!user) {
     return null;
@@ -102,6 +126,19 @@ export function UserMenu({ user: initialUser }: UserMenuProps) {
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSeparator className="sm:hidden" />
+        {/* Subscription management */}
+        {hasActiveSubscription ? (
+          <DropdownMenuItem onClick={handleManageSubscription}>
+            <CreditCard className="mr-2 h-4 w-4" />
+            <span>Manage Subscription</span>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onClick={handleSubscribe}>
+            <CreditCard className="mr-2 h-4 w-4" />
+            <span>Subscribe to Email Alerts</span>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
         <DropdownMenuItem disabled={isSigningOut} onClick={handleSignOut}>
           <LogOut className="mr-2 h-4 w-4" />
           <span>{isSigningOut ? "Signing out..." : "Sign out"}</span>

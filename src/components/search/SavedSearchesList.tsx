@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowRight, Bookmark, Search, Trash2 } from "lucide-react";
+import { ArrowRight, Bell, BellOff, Bookmark, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "~/components/ui/button";
+import { authClient } from "~/lib/auth-client";
 import { buildSearchUrl } from "~/lib/search-utils";
 import { api } from "~/trpc/react";
 
@@ -11,6 +12,9 @@ export function SavedSearchesList() {
   const utils = api.useUtils();
 
   const { data: savedSearches, isLoading } = api.savedSearches.list.useQuery();
+  const { data: subscriptionData } = api.subscription.getCustomerState.useQuery();
+
+  const hasActiveSubscription = subscriptionData?.hasActiveSubscription ?? false;
 
   const deleteMutation = api.savedSearches.delete.useMutation({
     onMutate: async ({ id }) => {
@@ -43,10 +47,64 @@ export function SavedSearchesList() {
     },
   });
 
+  const toggleAlertsMutation = api.savedSearches.toggleEmailAlerts.useMutation({
+    onMutate: async ({ id, enabled }) => {
+      await utils.savedSearches.list.cancel();
+      const previousSearches = utils.savedSearches.list.getData();
+
+      utils.savedSearches.list.setData(undefined, (old) =>
+        old?.map((search) =>
+          search.id === id ? { ...search, emailAlertsEnabled: enabled } : search,
+        ),
+      );
+
+      return { previousSearches };
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previousSearches) {
+        utils.savedSearches.list.setData(undefined, context.previousSearches);
+      }
+      toast.error(error.message || "Failed to toggle email alerts");
+    },
+    onSuccess: (_, variables) => {
+      toast.success(
+        variables.enabled
+          ? "Email alerts enabled for this search"
+          : "Email alerts disabled for this search",
+      );
+    },
+    onSettled: () => {
+      void utils.savedSearches.list.invalidate();
+    },
+  });
+
   const handleDelete = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
     e.stopPropagation();
     deleteMutation.mutate({ id });
+  };
+
+  const handleToggleAlerts = async (e: React.MouseEvent, searchId: string, currentState: boolean) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // If trying to enable but no subscription, redirect to checkout
+    if (!currentState && !hasActiveSubscription) {
+      try {
+        await authClient.checkout({
+          slug: "Email-Notifications",
+        });
+      } catch (error) {
+        toast.error("Failed to open checkout. Please try again.");
+        console.error("Checkout error:", error);
+      }
+      return;
+    }
+
+    toggleAlertsMutation.mutate({
+      id: searchId,
+      enabled: !currentState,
+    });
   };
 
   // Build a summary of active filters for display
@@ -123,6 +181,30 @@ export function SavedSearchesList() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-8 w-8 p-0 transition-opacity ${
+                    search.emailAlertsEnabled
+                      ? "text-primary opacity-100"
+                      : "sm:opacity-0 sm:group-hover:opacity-100"
+                  }`}
+                  onClick={(e) => handleToggleAlerts(e, search.id, search.emailAlertsEnabled ?? false)}
+                  disabled={toggleAlertsMutation.isPending}
+                  title={
+                    search.emailAlertsEnabled
+                      ? "Email alerts enabled - click to disable"
+                      : hasActiveSubscription
+                      ? "Click to enable email alerts"
+                      : "Subscribe to enable email alerts"
+                  }
+                >
+                  {search.emailAlertsEnabled ? (
+                    <Bell className="h-4 w-4" />
+                  ) : (
+                    <BellOff className="h-4 w-4" />
+                  )}
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
