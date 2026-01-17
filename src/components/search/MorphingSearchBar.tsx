@@ -152,7 +152,7 @@ export const MorphingSearchBar = forwardRef<HTMLDivElement>(
         {style && (
           <form
             onSubmit={handleSubmit}
-            className="fixed z-40"
+            className="fixed z-[60]"
             style={{
               top: style.top,
               left: style.left,
