@@ -6,6 +6,7 @@ import { useQueryState } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useDebounce } from "use-debounce";
+import { ErrorBoundary } from "~/components/ErrorBoundary";
 import { MobileFiltersDrawer } from "~/components/search/MobileFiltersDrawer";
 import { MorphingFilterBar } from "~/components/search/MorphingFilterBar";
 import { MorphingSearchBar } from "~/components/search/MorphingSearchBar";
@@ -20,7 +21,6 @@ import {
   SearchSummary,
 } from "~/components/search/SearchResults";
 import { Sidebar } from "~/components/search/Sidebar";
-import { ErrorBoundary } from "~/components/ErrorBoundary";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
