@@ -1,4 +1,4 @@
-import { Search, Bell, MapPin, Zap } from "lucide-react";
+import { Bell, MapPin, Search, Zap } from "lucide-react";
 import Link from "next/link";
 import { Button } from "~/components/ui/button";
 
@@ -27,7 +27,7 @@ export default function Home() {
           </h1>
 
           {/* Subheadline */}
-          <p className="mx-auto mb-10 max-w-xl text-lg text-muted-foreground sm:text-xl">
+          <p className="mx-auto mb-10 max-w-lg text-lg text-muted-foreground sm:text-xl text-pretty">
             Search salvage yard inventory across the nation. Save searches, get
             alerts when new vehicles arrive, and never miss a part again.
           </p>
@@ -105,8 +105,7 @@ export default function Home() {
             Ready to find your part?
           </h2>
           <p className="mb-8 text-muted-foreground">
-            Join thousands of DIYers and mechanics who use Junkyard Index to
-            find parts faster.
+            Stop checking multiple sites. Search once, find everything.
           </p>
           <Button asChild size="lg">
             <Link href="/search">
