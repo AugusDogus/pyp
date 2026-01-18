@@ -20,6 +20,7 @@ import {
   SearchSummary,
 } from "~/components/search/SearchResults";
 import { Sidebar } from "~/components/search/Sidebar";
+import { ErrorBoundary } from "~/components/ErrorBoundary";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
@@ -241,7 +242,9 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
   return (
     <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
       {/* Search Input - sticky with scroll-linked scaling */}
-      <MorphingSearchBar />
+      <ErrorBoundary>
+        <MorphingSearchBar />
+      </ErrorBoundary>
 
       <div className="relative flex w-full gap-6">
         {/* Desktop Sidebar - only render when filters are shown and not on mobile */}
