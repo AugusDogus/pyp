@@ -596,7 +596,12 @@ export const vehiclesRouter = createTRPCRouter({
               }));
 
               allVehicles.push(...vehiclesWithDistance);
-              totalLocationsCovered += 51;
+
+              // Count unique locations from the returned vehicles
+              const uniqueRow52Locations = new Set(
+                row52Vehicles.map((v) => v.location.locationCode),
+              );
+              totalLocationsCovered += uniqueRow52Locations.size;
             } catch (error) {
               console.error("Error fetching from Row52:", error);
               locationsWithErrors.push("row52-all");
