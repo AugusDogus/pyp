@@ -84,6 +84,37 @@ export function SearchPageContent({ isLoggedIn }: SearchPageContentProps) {
     setAutoOpenSaveDialog(false);
   }, []);
 
+  // Keyboard shortcut: Cmd/Ctrl+K to focus search
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        document.getElementById("search")?.focus();
+      }
+    };
+
+    document.addEventListener("keydown", down);
+    return () => document.removeEventListener("keydown", down);
+  }, []);
+
+  // Keyboard shortcut: F to toggle filters (when not in input)
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+        return;
+      }
+
+      if (e.key === "f" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setShowFilters((prev) => !prev);
+      }
+    };
+
+    document.addEventListener("keydown", down);
+    return () => document.removeEventListener("keydown", down);
+  }, []);
+
   // Sort state - should be in URL for shareability
   const [sortBy, setSortBy] = useQueryState(
     "sort",
