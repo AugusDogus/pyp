@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { env } from "~/env";
@@ -11,6 +11,9 @@ import { savedSearch, user } from "~/schema";
 import { appRouter } from "~/server/api/root";
 import { filtersSchema } from "~/server/api/routers/savedSearches";
 import { createCallerFactory, createTRPCContext } from "~/server/api/trpc";
+
+// Lock timeout in milliseconds (5 minutes)
+const LOCK_TIMEOUT_MS = 5 * 60 * 1000;
 
 // Create a tRPC caller for server-side use
 const createCaller = createCallerFactory(appRouter);
@@ -155,7 +158,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Get all saved searches with email alerts enabled
+    // Calculate stale lock threshold (locks older than 5 minutes are considered stale)
+    const staleLockThreshold = new Date(Date.now() - LOCK_TIMEOUT_MS);
+
+    // Get all saved searches with email alerts enabled that are not currently being processed
+    // (processingLock is null OR processingLock is older than 5 minutes)
     const searchesWithAlerts = await db
       .select({
         id: savedSearch.id,
@@ -167,10 +174,18 @@ export async function GET(request: NextRequest) {
         lastVehicleIds: savedSearch.lastVehicleIds,
       })
       .from(savedSearch)
-      .where(eq(savedSearch.emailAlertsEnabled, true));
+      .where(
+        and(
+          eq(savedSearch.emailAlertsEnabled, true),
+          or(
+            isNull(savedSearch.processingLock),
+            lt(savedSearch.processingLock, staleLockThreshold)
+          )
+        )
+      );
 
     if (searchesWithAlerts.length === 0) {
-      return NextResponse.json({ message: "No searches with alerts enabled" });
+      return NextResponse.json({ message: "No searches with alerts enabled (or all are locked)" });
     }
 
     console.log(`Processing ${searchesWithAlerts.length} searches with alerts enabled`);
@@ -180,6 +195,20 @@ export async function GET(request: NextRequest) {
     // Process searches in batches for efficient parallel execution
     for (let i = 0; i < searchesWithAlerts.length; i += BATCH_SIZE) {
       const batch = searchesWithAlerts.slice(i, i + BATCH_SIZE);
+
+      // Acquire locks for this batch
+      await db
+        .update(savedSearch)
+        .set({ processingLock: new Date() })
+        .where(
+          and(
+            eq(savedSearch.emailAlertsEnabled, true),
+            or(
+              isNull(savedSearch.processingLock),
+              lt(savedSearch.processingLock, staleLockThreshold)
+            )
+          )
+        );
 
       const batchResults = await Promise.all(
         batch.map(async (search) => {
@@ -194,6 +223,11 @@ export async function GET(request: NextRequest) {
             const userEmail = userRecord[0]?.email;
             if (!userEmail) {
               console.warn(`No email found for user ${search.userId}, search ${search.id}`);
+              // Release lock
+              await db
+                .update(savedSearch)
+                .set({ processingLock: null })
+                .where(eq(savedSearch.id, search.id));
               return { searchId: search.id, status: "no_user_email" };
             }
 
@@ -204,28 +238,43 @@ export async function GET(request: NextRequest) {
                 externalId: search.userId,
               });
               if (customerState.activeSubscriptions.length === 0) {
-                // Auto-disable alerts for this user
+                // Auto-disable alerts for this user and release lock
                 await db
                   .update(savedSearch)
-                  .set({ emailAlertsEnabled: false })
+                  .set({ emailAlertsEnabled: false, processingLock: null })
                   .where(eq(savedSearch.id, search.id));
                 return { searchId: search.id, status: "subscription_expired_disabled" };
               }
             } catch {
-              // Customer not found in Polar - disable alerts
+              // Customer not found in Polar - disable alerts and release lock
               await db
                 .update(savedSearch)
-                .set({ emailAlertsEnabled: false })
+                .set({ emailAlertsEnabled: false, processingLock: null })
                 .where(eq(savedSearch.id, search.id));
               return { searchId: search.id, status: "no_subscription_disabled" };
             }
 
-            return await processSearch(search, userEmail);
+            const result = await processSearch(search, userEmail);
+
+            // Release lock after successful processing
+            await db
+              .update(savedSearch)
+              .set({ processingLock: null })
+              .where(eq(savedSearch.id, search.id));
+
+            return result;
           } catch (error) {
             console.error(`Error processing search ${search.id}:`, error);
             Sentry.captureException(error, {
               tags: { searchId: search.id, userId: search.userId },
             });
+
+            // Release lock on error
+            await db
+              .update(savedSearch)
+              .set({ processingLock: null })
+              .where(eq(savedSearch.id, search.id));
+
             return {
               searchId: search.id,
               status: `error: ${error instanceof Error ? error.message : "Unknown error"}`,

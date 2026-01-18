@@ -111,6 +111,7 @@ export function SaveSearchDialog({
           emailAlertsEnabled: newSearch.emailAlertsEnabled ?? false,
           lastCheckedAt: null,
           lastVehicleIds: null,
+          processingLock: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         };
