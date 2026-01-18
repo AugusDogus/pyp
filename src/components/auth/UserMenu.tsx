@@ -162,17 +162,17 @@ export function UserMenu({ user: initialUser }: UserMenuProps) {
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem disabled={isSigningOut} onClick={handleSignOut}>
-            <LogOut className="mr-2 h-4 w-4" />
-            <span>{isSigningOut ? "Signing out..." : "Sign out"}</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={() => setShowDeleteDialog(true)}
           >
             <Trash2 className="mr-2 h-4 w-4" />
             <span>Delete Account</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={isSigningOut} onClick={handleSignOut}>
+            <LogOut className="mr-2 h-4 w-4" />
+            <span>{isSigningOut ? "Signing out..." : "Sign out"}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
