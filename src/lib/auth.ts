@@ -80,6 +80,23 @@ export const auth = betterAuth({
         usage(),
         webhooks({
           secret: env.POLAR_WEBHOOK_SECRET,
+          onSubscriptionCreated: async () => {
+            // Track Google Ads conversion when a new subscription is created
+            if (env.GOOGLE_ADS_CONVERSION_ID && env.GOOGLE_ADS_CONVERSION_LABEL) {
+              try {
+                const conversionUrl = new URL(
+                  `https://www.googleadservices.com/pagead/conversion/${env.GOOGLE_ADS_CONVERSION_ID}/`
+                );
+                conversionUrl.searchParams.set("label", env.GOOGLE_ADS_CONVERSION_LABEL);
+                conversionUrl.searchParams.set("value", "1.0");
+                conversionUrl.searchParams.set("currency", "USD");
+
+                await fetch(conversionUrl.toString(), { method: "GET" });
+              } catch (error) {
+                console.error("Failed to send Google Ads conversion:", error);
+              }
+            }
+          },
           onCustomerStateChanged: async (payload) => {
             // Triggered when anything regarding a customer changes (subscription status, etc.)
             // Check if customer has any active subscriptions

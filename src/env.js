@@ -21,6 +21,9 @@ export const env = createEnv({
     CONTACT_EMAIL: z.string().email(),
     CRON_SECRET: z.string(),
     UNSUBSCRIBE_SECRET: z.string().min(32),
+    // Google Ads conversion tracking (optional)
+    GOOGLE_ADS_CONVERSION_ID: z.string().optional(),
+    GOOGLE_ADS_CONVERSION_LABEL: z.string().optional(),
   },
 
   /**
@@ -54,6 +57,8 @@ export const env = createEnv({
     CONTACT_EMAIL: process.env.CONTACT_EMAIL,
     CRON_SECRET: process.env.CRON_SECRET,
     UNSUBSCRIBE_SECRET: process.env.UNSUBSCRIBE_SECRET,
+    GOOGLE_ADS_CONVERSION_ID: process.env.GOOGLE_ADS_CONVERSION_ID,
+    GOOGLE_ADS_CONVERSION_LABEL: process.env.GOOGLE_ADS_CONVERSION_LABEL,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
