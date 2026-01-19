@@ -80,10 +80,14 @@ async function fetchWithRetry(
       startingDelay: SEARCH_CONFIG.BASE_RETRY_DELAY,
       maxDelay: SEARCH_CONFIG.MAX_RETRY_DELAY,
       retry: (error: Error, attemptNumber: number) => {
+        // Don't retry or log abort errors - request was intentionally cancelled
+        if (error.name === "AbortError") {
+          return false;
+        }
         console.log(
           `Request failed (attempt ${attemptNumber}/${SEARCH_CONFIG.MAX_RETRIES}): ${error.message}`,
         );
-        return true; // Always retry unless it's a client error (handled above)
+        return true; // Retry server errors
       },
     },
   );
