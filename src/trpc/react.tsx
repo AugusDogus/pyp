@@ -22,7 +22,10 @@ const getQueryClient = () => {
   return clientQueryClientSingleton;
 };
 
-export const api = createTRPCReact<AppRouter>();
+export const api = createTRPCReact<AppRouter>({
+  // Enable automatic query cancellation when components unmount or query keys change
+  abortOnUnmount: true,
+});
 
 /**
  * Inference helper for inputs.

@@ -17,10 +17,12 @@ function buildODataUrl(endpoint: string, queryString: string): string {
 async function fetchRow52<T>(
   endpoint: string,
   queryString: string = "",
+  signal?: AbortSignal,
 ): Promise<Row52ODataResponse<T>> {
   const url = buildODataUrl(endpoint, queryString);
 
   const response = await fetch(url, {
+    signal,
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -187,8 +189,14 @@ function buildVehicleFilter(query: string): Record<string, unknown> {
 async function fetchVehiclesFromRow52Internal(
   query: string,
   locationMap: Map<number, Location>,
+  signal?: AbortSignal,
 ): Promise<Vehicle[]> {
   try {
+    // Check if already aborted
+    if (signal?.aborted) {
+      return [];
+    }
+
     const queryString = buildQuery({
       filter: buildVehicleFilter(query),
       expand: ["model($expand=make)", "location($expand=state)", "images"],
@@ -199,7 +207,13 @@ async function fetchVehiclesFromRow52Internal(
     const response = await fetchRow52<Row52Vehicle>(
       API_ENDPOINTS.ROW52_VEHICLES,
       queryString,
+      signal,
     );
+
+    // Check if aborted after fetch
+    if (signal?.aborted) {
+      return [];
+    }
 
     return response.value
       .map((vehicle) => {
@@ -214,27 +228,55 @@ async function fetchVehiclesFromRow52Internal(
       })
       .filter((v): v is Vehicle => v !== null);
   } catch (error) {
+    // Don't log abort errors
+    if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
+      return [];
+    }
     console.error("Error fetching vehicles from Row52:", error);
     return [];
   }
 }
 
-export const fetchVehiclesFromRow52 = unstable_cache(
-  async (query: string) => {
-    const locations = await fetchLocationsFromRow52();
-    const locationMap = new Map<number, Location>();
-    locations.forEach((loc) => {
-      locationMap.set(parseInt(loc.locationCode), loc);
-    });
+/**
+ * Fetch vehicles from Row52 with optional abort signal support
+ * Note: The signal is NOT part of the cache key - we pass it through for cancellation
+ * but the cache is based on query only
+ */
+export async function fetchVehiclesFromRow52(
+  query: string,
+  signal?: AbortSignal,
+): Promise<Vehicle[]> {
+  // Check if already aborted
+  if (signal?.aborted) {
+    return [];
+  }
 
-    return fetchVehiclesFromRow52Internal(query, locationMap);
-  },
-  ["row52-vehicles"],
-  {
-    revalidate: 300, // Cache for 5 minutes
-    tags: ["row52-vehicles"],
-  },
-);
+  const locations = await fetchLocationsFromRow52();
+
+  // Check if aborted after locations fetch
+  if (signal?.aborted) {
+    return [];
+  }
+
+  const locationMap = new Map<number, Location>();
+  locations.forEach((loc) => {
+    locationMap.set(parseInt(loc.locationCode), loc);
+  });
+
+  // Use unstable_cache for the actual vehicle fetch
+  const cachedFetch = unstable_cache(
+    async (q: string) => {
+      return fetchVehiclesFromRow52Internal(q, locationMap, signal);
+    },
+    ["row52-vehicles", query],
+    {
+      revalidate: 300, // Cache for 5 minutes
+      tags: ["row52-vehicles"],
+    },
+  );
+
+  return cachedFetch(query);
+}
 
 export async function fetchMakesFromRow52(): Promise<
   Array<{ id: number; name: string }>

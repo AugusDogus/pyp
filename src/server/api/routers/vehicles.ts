@@ -119,12 +119,19 @@ function extractCookies(response: Response): string {
 async function fetchVehicleInventoryInternal(
   location: Location,
   searchQuery: string,
+  signal?: AbortSignal,
 ): Promise<ParsedVehicleData[]> {
   try {
+    // Check if already aborted before starting
+    if (signal?.aborted) {
+      return [];
+    }
+
     // Step 1: First visit the inventory page to establish a session and get cookies
     const inventoryPageUrl = `${API_ENDPOINTS.PYP_BASE}${location.urls.inventory}`;
 
     const sessionResponse = await fetch(inventoryPageUrl, {
+      signal,
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -142,6 +149,11 @@ async function fetchVehicleInventoryInternal(
       },
     });
 
+    // Check if aborted after session fetch
+    if (signal?.aborted) {
+      return [];
+    }
+
     // Extract cookies from the session response
     const cookies = extractCookies(sessionResponse);
 
@@ -153,45 +165,60 @@ async function fetchVehicleInventoryInternal(
     url.searchParams.set("filter", searchQuery);
     url.searchParams.set("store", location.locationCode);
 
+    // Create a combined abort controller that handles both timeout and external signal
     const controller = new AbortController();
     const timeoutId = setTimeout(
       () => controller.abort(),
       SEARCH_CONFIG.REQUEST_TIMEOUT,
     );
 
-    // Make AJAX request with the session cookies
-    const response = await fetchWithRetry(url.toString(), {
-      signal: controller.signal,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "X-Requested-With": "XMLHttpRequest",
-        Referer: inventoryPageUrl,
-        Origin: API_ENDPOINTS.PYP_BASE,
-        DNT: "1",
-        Connection: "keep-alive",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-        "Cache-Control": "no-cache",
-        ...(cookies ? { Cookie: cookies } : {}),
-      },
-    });
+    // If the external signal aborts, also abort our controller
+    const abortHandler = () => controller.abort();
+    signal?.addEventListener("abort", abortHandler);
 
-    clearTimeout(timeoutId);
+    try {
+      // Make AJAX request with the session cookies
+      const response = await fetchWithRetry(url.toString(), {
+        signal: controller.signal,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Accept-Encoding": "gzip, deflate, br",
+          "X-Requested-With": "XMLHttpRequest",
+          Referer: inventoryPageUrl,
+          Origin: API_ENDPOINTS.PYP_BASE,
+          DNT: "1",
+          Connection: "keep-alive",
+          "Sec-Fetch-Dest": "empty",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Site": "same-origin",
+          "Cache-Control": "no-cache",
+          ...(cookies ? { Cookie: cookies } : {}),
+        },
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const html = await response.text();
+
+      return parseVehicleInventoryHTML(html, location);
+    } finally {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", abortHandler);
+    }
+  } catch (error) {
+    // Don't log abort errors
+    if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
+      return [];
     }
 
-    const html = await response.text();
-
-    return parseVehicleInventoryHTML(html, location);
-  } catch (error) {
     console.error(
       `Error fetching inventory for location ${location.locationCode}:`,
       error,
@@ -206,18 +233,33 @@ async function fetchVehicleInventoryInternal(
 
 /**
  * Cached version of fetchVehicleInventoryInternal using Next.js cache
- *
+ * Note: The signal is NOT part of the cache key - we pass it through for cancellation
+ * but the cache is based on location + searchQuery only
  */
-const fetchVehicleInventory = unstable_cache(
-  async (location: Location, searchQuery: string) => {
-    return fetchVehicleInventoryInternal(location, searchQuery);
-  },
-  ["vehicle-inventory"],
-  {
-    revalidate: 300, // Cache for 5 minutes
-    tags: ["vehicles"],
-  },
-);
+async function fetchVehicleInventory(
+  location: Location,
+  searchQuery: string,
+  signal?: AbortSignal,
+): Promise<ParsedVehicleData[]> {
+  // Check if already aborted
+  if (signal?.aborted) {
+    return [];
+  }
+
+  // Use unstable_cache for the actual fetch, but handle signal separately
+  const cachedFetch = unstable_cache(
+    async (loc: Location, query: string) => {
+      return fetchVehicleInventoryInternal(loc, query, signal);
+    },
+    ["vehicle-inventory", location.locationCode, searchQuery],
+    {
+      revalidate: 300, // Cache for 5 minutes
+      tags: ["vehicles"],
+    },
+  );
+
+  return cachedFetch(location, searchQuery);
+}
 
 /**
  * Helper function to extract text after a label
@@ -493,8 +535,15 @@ function deduplicateVehicles(vehicles: Vehicle[]): Vehicle[] {
 export const vehiclesRouter = createTRPCRouter({
   search: publicProcedure
     .input(searchFiltersSchema)
-    .query(async ({ input, ctx }): Promise<SearchResult> => {
+    .query(async ({ input, ctx, signal }): Promise<SearchResult> => {
       const startTime = Date.now();
+
+      // Helper to check if request was aborted
+      const checkAborted = () => {
+        if (signal?.aborted) {
+          throw new Error("Search request was cancelled");
+        }
+      };
 
       let userLocation: [number, number] = [39.8283, -98.5795];
       try {
@@ -525,6 +574,7 @@ export const vehiclesRouter = createTRPCRouter({
         sourcePromises.push(
           (async () => {
             try {
+              checkAborted();
               const locationsToSearch = await fetchLocationsFromPYP();
               totalLocationsCovered += locationsToSearch.length;
 
@@ -532,10 +582,13 @@ export const vehiclesRouter = createTRPCRouter({
 
               const pypVehiclePromises = locationsToSearch.map((location) =>
                 limit(async () => {
+                  // Check if cancelled before starting each location fetch
+                  checkAborted();
                   try {
                     const parsedVehicles = await fetchVehicleInventory(
                       location,
                       input.query,
+                      signal,
                     );
                     return parsedVehicles.map((vehicle) => {
                       const distance = calculateDistance(
@@ -556,6 +609,10 @@ export const vehiclesRouter = createTRPCRouter({
                       } as Vehicle;
                     });
                   } catch (error) {
+                    // Don't log cancellation errors as errors
+                    if (signal?.aborted) {
+                      return [];
+                    }
                     console.error(
                       `Error fetching vehicles from PYP ${location.locationCode}:`,
                       error,
@@ -567,8 +624,13 @@ export const vehiclesRouter = createTRPCRouter({
               );
 
               const pypResults = await Promise.all(pypVehiclePromises);
+              checkAborted();
               allVehicles.push(...pypResults.flat());
             } catch (error) {
+              // Don't log cancellation errors
+              if (signal?.aborted) {
+                return;
+              }
               console.error("Error fetching from PYP:", error);
               locationsWithErrors.push("pyp-all");
             }
@@ -580,8 +642,13 @@ export const vehiclesRouter = createTRPCRouter({
         sourcePromises.push(
           (async () => {
             try {
-              const row52Vehicles = await fetchVehiclesFromRow52(input.query);
+              checkAborted();
+              const row52Vehicles = await fetchVehiclesFromRow52(
+                input.query,
+                signal,
+              );
 
+              checkAborted();
               const vehiclesWithDistance = row52Vehicles.map((vehicle) => ({
                 ...vehicle,
                 location: {
@@ -603,6 +670,10 @@ export const vehiclesRouter = createTRPCRouter({
               );
               totalLocationsCovered += uniqueRow52Locations.size;
             } catch (error) {
+              // Don't log cancellation errors
+              if (signal?.aborted) {
+                return;
+              }
               console.error("Error fetching from Row52:", error);
               locationsWithErrors.push("row52-all");
             }
@@ -611,6 +682,7 @@ export const vehiclesRouter = createTRPCRouter({
       }
 
       await Promise.all(sourcePromises);
+      checkAborted();
 
       const deduplicatedVehicles = deduplicateVehicles(allVehicles);
       const filteredVehicles = filterVehicles(deduplicatedVehicles, input);
